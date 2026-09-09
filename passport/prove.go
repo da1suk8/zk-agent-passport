@@ -14,6 +14,8 @@ var (
 	ErrThresholdNotMet    = errors.New("score does not satisfy the policy threshold")
 	ErrReceiptCountNotMet = errors.New("receipt count does not satisfy the policy minimum")
 	ErrPolicyMismatch     = errors.New("certificate does not satisfy the requested policy")
+	ErrNotPassportHolder  = errors.New("agent secret does not open the certificate's passport commitment")
+	ErrScoreOpening       = errors.New("score and salt do not open the certificate's score commitment")
 )
 
 // BuildStatement assembles the public inputs for one presented certificate,
@@ -74,6 +76,22 @@ type ProofPackage struct {
 func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 	cert := req.Issued.Certificate
 	pol := req.Policy.Policy
+	// The agent must actually hold this certificate: its secret must open
+	// the passport commitment and its score opening must match.
+	passportCommitment, err := field.Commit(req.Agent.AgentSecret, req.Agent.PassportSalt)
+	if err != nil {
+		return nil, err
+	}
+	if passportCommitment != cert.PassportCommitment {
+		return nil, ErrNotPassportHolder
+	}
+	scoreCommitment, err := field.Commit(req.Issued.Score, req.Issued.ScoreSalt)
+	if err != nil {
+		return nil, err
+	}
+	if scoreCommitment != cert.ScoreCommitment {
+		return nil, ErrScoreOpening
+	}
 	below, err := field.Less(req.Issued.Score, pol.RequiredThreshold)
 	if err != nil {
 		return nil, err

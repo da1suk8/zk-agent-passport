@@ -2,6 +2,8 @@ package zkp
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -89,6 +91,28 @@ func (p *Proof) UnmarshalBinary(data []byte) error {
 	p.Groth16 = groth16.NewProof(ecc.BN254)
 	_, err := p.Groth16.ReadFrom(bytes.NewReader(data))
 	return err
+}
+
+// MarshalJSON encodes the proof as a base64 string.
+func (p Proof) MarshalJSON() ([]byte, error) {
+	raw, err := p.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(base64.StdEncoding.EncodeToString(raw))
+}
+
+// UnmarshalJSON decodes a base64 proof.
+func (p *Proof) UnmarshalJSON(data []byte) error {
+	var encoded string
+	if err := json.Unmarshal(data, &encoded); err != nil {
+		return err
+	}
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return err
+	}
+	return p.UnmarshalBinary(raw)
 }
 
 // System is a compiled circuit with its proving and verifying keys.

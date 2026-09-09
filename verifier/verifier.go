@@ -87,6 +87,37 @@ func New(sys *zkp.System, committee []passport.PublicIdentity, verifierName stri
 	}
 }
 
+// State is the verifier's nonce bookkeeping, so that a service can persist
+// it between processes.
+type State struct {
+	Pending map[string]field.Element `json:"pending"`
+	Used    []string                 `json:"used"`
+}
+
+// ExportState snapshots the nonce bookkeeping.
+func (v *Verifier) ExportState() State {
+	st := State{Pending: map[string]field.Element{}}
+	for k, exp := range v.pending {
+		st.Pending[k] = exp
+	}
+	for k := range v.used {
+		st.Used = append(st.Used, k)
+	}
+	return st
+}
+
+// ImportState restores nonce bookkeeping from a snapshot.
+func (v *Verifier) ImportState(st State) {
+	v.pending = map[string]field.Element{}
+	for k, exp := range st.Pending {
+		v.pending[k] = exp
+	}
+	v.used = map[string]struct{}{}
+	for _, k := range st.Used {
+		v.used[k] = struct{}{}
+	}
+}
+
 // IssueChallenge hands out a fresh nonce bound to this verifier and records
 // it as pending.
 func (v *Verifier) IssueChallenge(now int64) (passport.Challenge, error) {

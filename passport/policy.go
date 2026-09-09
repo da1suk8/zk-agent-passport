@@ -1,6 +1,15 @@
 package passport
 
-import "github.com/da1suk8/zk-agent-passport/field"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/da1suk8/zk-agent-passport/field"
+)
+
+// ErrPolicyInconsistent is returned when a published policy, its hash, and
+// its version policy do not agree.
+var ErrPolicyInconsistent = errors.New("policy, policy hash, and version policy are inconsistent")
 
 // Policy is a service's access condition. Its hash is a public input of the
 // proof, so a proof for one policy cannot be reused for another.
@@ -73,4 +82,26 @@ func PolicyHash(p Policy) (field.Element, error) {
 		p.ManifestMutableMask,
 		p.ManifestAllowlistRoot,
 	)
+}
+
+// RebuildPolicy reconstructs a bundle from the parts a service publishes:
+// the policy, its hash, and the version policy behind the allowlist root.
+// It fails if the parts do not agree, so a prover never works from a
+// tampered or mismatched policy.
+func RebuildPolicy(p Policy, hash field.Element, vp ManifestVersionPolicy) (PolicyBundle, error) {
+	allowlist, err := BuildManifestAllowlist(vp)
+	if err != nil {
+		return PolicyBundle{}, err
+	}
+	if p.ManifestAllowlistRoot != allowlist.Root || p.ManifestMutableMask != field.FromInt(vp.Mask()) {
+		return PolicyBundle{}, fmt.Errorf("%w: version policy", ErrPolicyInconsistent)
+	}
+	computed, err := PolicyHash(p)
+	if err != nil {
+		return PolicyBundle{}, err
+	}
+	if computed != hash {
+		return PolicyBundle{}, fmt.Errorf("%w: hash", ErrPolicyInconsistent)
+	}
+	return PolicyBundle{Policy: p, PolicyHash: hash, VersionPolicy: vp, Allowlist: allowlist}, nil
 }

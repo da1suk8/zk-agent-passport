@@ -252,6 +252,21 @@ func TestCannotProveWithTooFewReceipts(t *testing.T) {
 	}
 }
 
+func TestCannotProveWithSomeoneElsesSecret(t *testing.T) {
+	w := newWorld(t)
+	impostor, err := passport.NewAgent(w.Agent.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, _ := w.NewChallenge()
+	_, err = passport.Prove(sys, passport.ProofRequest{
+		Agent: impostor, CertifiedManifest: w.CertifiedManifest, Issued: w.Issued, Policy: w.Policy, Challenge: ch,
+	})
+	if !errors.Is(err, passport.ErrNotPassportHolder) {
+		t.Fatalf("expected not-holder error, got %v", err)
+	}
+}
+
 func TestPresentationWithholdsReceiptCount(t *testing.T) {
 	_, _, pkg := proven(t)
 	raw, err := json.Marshal(pkg.Presentation)

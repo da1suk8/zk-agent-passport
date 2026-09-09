@@ -48,6 +48,26 @@ func (a *Agent) UpdateManifest(m Manifest) error {
 	return nil
 }
 
+// RestoreAgent rebuilds an agent from its persisted secret, salt, and
+// manifest. This is how a single-shot process loads its identity.
+func RestoreAgent(secret, salt field.Element, m Manifest) (*Agent, error) {
+	passport, err := field.Commit(secret, salt)
+	if err != nil {
+		return nil, fmt.Errorf("passport commitment: %w", err)
+	}
+	manifest, err := ManifestCommitment(m)
+	if err != nil {
+		return nil, fmt.Errorf("manifest commitment: %w", err)
+	}
+	return &Agent{
+		AgentSecret:             secret,
+		PassportSalt:            salt,
+		PassportCommitment:      passport,
+		AgentManifestCommitment: manifest,
+		Manifest:                m,
+	}, nil
+}
+
 // NewAgent creates a passport for a manifest.
 func NewAgent(m Manifest) (*Agent, error) {
 	secret, err := field.Random()
