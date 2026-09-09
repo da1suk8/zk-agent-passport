@@ -296,9 +296,9 @@ func craftAttack(world *demo.World, kind string) (passport.Receipt, string, erro
 	}
 }
 
-// otherService proves the same certificate to a second service and shows
-// what that service sees: the same passport commitment, which is what
-// makes the two visits linkable.
+// otherService proves to a second service and shows what that service
+// learns: a nullifier unrelated to the first service's, so the two visits
+// cannot be linked.
 func (s *server) otherService(w http.ResponseWriter, _ *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -307,12 +307,12 @@ func (s *server) otherService(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	const otherName = "travel-insurance-service"
-	var committee []passport.PublicIdentity
-	for _, node := range world.Committee {
-		committee = append(committee, node.Public())
+	var nullifierA string
+	if s.last != nil && s.last.pkg != nil {
+		nullifierA = s.last.pkg.Statement.Nullifier
 	}
-	other := verifier.New(s.sys, committee, otherName)
+	const otherName = "travel-insurance-service"
+	other := verifier.New(s.sys, world.Keyset, otherName)
 	ch, err := other.IssueChallenge(demo.Now)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -324,26 +324,25 @@ func (s *server) otherService(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	decision, verr := other.VerifyAccess(verifier.AccessRequest{
-		Presentation: pkg.Presentation, Policy: world.Policy, Challenge: ch, Proof: pkg, Now: demo.Now,
+		Policy: world.Policy, Challenge: ch, Proof: pkg, Now: demo.Now,
 	})
 	step := Step{ID: "link", From: "agent", To: "service", Title: "別の Service（" + otherName + "）に同じ Certificate で証明", Status: "ok"}
 	if verr != nil {
 		step.Status = "rejected"
 		step.Error = verr.Error()
 	}
-	passportA := world.Issued.Certificate.PassportCommitment
-	passportB := pkg.Presentation.PassportCommitment
+	nullifierB := pkg.Statement.Nullifier
 	step.Lines = []KV{
 		{Key: "判定", Value: map[bool]string{true: "authorized", false: "rejected"}[decision.Authorized]},
 		{Key: "nonce（Service B 発行）", Value: short(ch.Nonce, 14)},
-		{Key: "Service A が見た passport", Value: short(passportA, 14)},
-		{Key: "Service B が見た passport", Value: short(passportB, 14)},
+		{Key: "Service A が見た nullifier", Value: short(nullifierA, 14)},
+		{Key: "Service B が見た nullifier", Value: short(nullifierB, 14)},
 	}
 	writeJSON(w, map[string]any{
 		"step":     step,
 		"outcome":  step.Status,
-		"linkable": passportA == passportB,
-		"note":     "2 つの Service が passportCommitment を突き合わせると同一 Agent だと分かる。現状の Limitation。次の一手は Service ごとの nullifier と Committee 署名の回路内検証。",
+		"linkable": nullifierA != "" && nullifierA == nullifierB,
+		"note":     "2 つの Service が受け取る値に共通するものは無い。nullifier は Service ごとに異なるので、両者が突き合わせても同一 Agent だとは分からない。",
 	})
 }
 

@@ -73,9 +73,11 @@
   .extras .title { font-weight: 700; margin-right: 4px; }
   .extras button.attack { border-color: #fca5a5; color: var(--bad); }
   .extras button.link { border-color: #c4b5fd; color: var(--secret); }
-  .linkbox { border: 2px solid var(--bad); background: var(--bad-bg); border-radius: 12px; padding: 12px 16px; }
-  .linkbox h2 { margin: 0 0 6px; font-size: 15px; color: var(--bad); }
+  .linkbox { border: 2px solid var(--ok); background: var(--ok-bg); border-radius: 12px; padding: 12px 16px; }
+  .linkbox h2 { margin: 0 0 6px; font-size: 15px; color: var(--ok); }
   .linkbox .kv { grid-template-columns: 170px 1fr; }
+  .linkbox.linked { border-color: var(--bad); background: var(--bad-bg); }
+  .linkbox.linked h2 { color: var(--bad); }
   .linkbox .same { color: var(--bad); font-weight: 700; }
   @keyframes pop { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 </style>
@@ -140,7 +142,7 @@
       <button class="attack" data-attack="duplicate">同じ Receipt を再提出</button>
       <button class="attack" data-attack="same-issuer">同一 Provider の 2 件目</button>
       <button class="attack" data-attack="expired">期限切れ Receipt</button>
-      <span class="title" style="margin-left:auto">限界を見る</span>
+      <span class="title" style="margin-left:auto">リンク不可を確かめる</span>
       <button class="link" id="otherService">別の Service で実行</button>
     </section>
     <section class="steps" id="steps"></section>
@@ -153,7 +155,7 @@
       <div class="kv" id="visible"></div>
     </div>
     <div class="linkbox" id="linkbox" hidden>
-      <h2>リンク可能性（現状の限界）</h2>
+      <h2 id="linktitle">Service 間でリンクできない</h2>
       <div class="kv" id="linkrows"></div>
       <p class="note" id="linknote"></p>
     </div>
@@ -222,6 +224,7 @@ function collect() {
 function clearBoard() {
   $("steps").innerHTML = "";
   $("linkbox").hidden = true;
+  $("linkbox").classList.remove("linked");
   document.querySelectorAll(".actor").forEach((a) => a.classList.remove("active", "rejected", "done"));
   document.querySelectorAll(".arrow").forEach((a) => a.classList.remove("active"));
   setVerdict("idle", "再生中…");
@@ -360,13 +363,16 @@ async function otherService() {
     renderStep(data.step);
     const box = $("linkbox");
     box.hidden = false;
-    const rows = data.step.lines.filter((l) => l.key.includes("passport"));
+    const rows = data.step.lines.filter((l) => l.key.includes("nullifier"));
     kvRows($("linkrows"), rows);
+    box.classList.toggle("linked", data.linkable);
     if (data.linkable) {
+      $("linktitle").textContent = "同じ値が見えている（想定外）";
       $("linkrows").querySelectorAll(".v").forEach((v) => v.classList.add("same"));
       $("linknote").textContent = "同じ値。" + data.note;
     } else {
-      $("linknote").textContent = data.note;
+      $("linktitle").textContent = "Service 間でリンクできない";
+      $("linknote").textContent = "別々の値。" + data.note;
     }
   } catch (e) {
     setVerdict("rejected", "エラー", e.message);
