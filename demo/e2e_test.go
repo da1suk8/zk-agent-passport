@@ -125,14 +125,69 @@ func TestGatewayRejectsDuplicateReceiptAndSecondReceiptFromSameIssuer(t *testing
 	}
 }
 
-func TestCannotProveAgainstDifferentManifestPolicy(t *testing.T) {
+func withManifest(t *testing.T, mutate func(*passport.Manifest), policy *passport.ManifestVersionPolicy) *World {
+	t.Helper()
+	opts := DefaultOptions()
+	current := opts.Manifest
+	mutate(&current)
+	opts.CurrentManifest = &current
+	opts.VersionPolicy = policy
+	w, err := NewWorldWith(sys, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+func TestProvesAfterPermittedManifestUpdate(t *testing.T) {
+	w := withManifest(t, func(m *passport.Manifest) { m.ModelID = "gpt-demo-v2" }, nil)
+	ch, _ := w.NewChallenge()
+	pkg, err := w.Prove(ch)
+	if err != nil {
+		t.Fatalf("permitted update should prove: %v", err)
+	}
+	decision, err := w.Access(ch, pkg)
+	if err != nil || !decision.Authorized {
+		t.Fatalf("permitted update should authorize: %v", err)
+	}
+	if w.Issued.Certificate.AgentManifestCommitment == w.Policy.Policy.RequestedManifestCommitment {
+		t.Fatal("test setup: manifests should differ")
+	}
+}
+
+func TestCannotProveWhenImmutableFieldChanges(t *testing.T) {
+	w := withManifest(t, func(m *passport.Manifest) { m.PermissionScope = "travel-booking-admin" }, nil)
+	ch, _ := w.NewChallenge()
+	if _, err := w.Prove(ch); !errors.Is(err, passport.ErrManifestFieldImmutable) {
+		t.Fatalf("expected immutable-field error, got %v", err)
+	}
+}
+
+func TestCannotProveWhenNewValueNotAllowlisted(t *testing.T) {
+	w := withManifest(t, func(m *passport.Manifest) { m.ModelID = "gpt-demo-v3" }, nil)
+	ch, _ := w.NewChallenge()
+	if _, err := w.Prove(ch); !errors.Is(err, passport.ErrManifestValueNotAllowed) {
+		t.Fatalf("expected allowlist error, got %v", err)
+	}
+}
+
+func TestStrictPolicyRejectsAnyManifestChange(t *testing.T) {
+	strict := passport.StrictManifestPolicy()
+	w := withManifest(t, func(m *passport.Manifest) { m.ModelID = "gpt-demo-v2" }, &strict)
+	ch, _ := w.NewChallenge()
+	if _, err := w.Prove(ch); !errors.Is(err, passport.ErrManifestFieldImmutable) {
+		t.Fatalf("expected immutable-field error, got %v", err)
+	}
+}
+
+func TestCannotProveAgainstForeignManifestPolicy(t *testing.T) {
 	w := newWorld(t)
-	mismatch, err := w.ManifestMismatchPolicy()
+	foreign, err := w.ForeignManifestPolicy()
 	if err != nil {
 		t.Fatal(err)
 	}
 	ch, _ := w.NewChallenge()
-	if _, err := w.ProveWith(ch, mismatch, w.Issued); !errors.Is(err, passport.ErrPolicyMismatch) {
+	if _, err := w.ProveWith(ch, foreign, w.Issued); !errors.Is(err, passport.ErrPolicyMismatch) {
 		t.Fatalf("expected policy mismatch, got %v", err)
 	}
 }

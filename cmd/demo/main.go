@@ -1,5 +1,6 @@
-// Command demo runs the zkAgent Passport flow end to end: one authorized
-// access followed by two rejected attempts.
+// Command demo runs the zkAgent Passport flow end to end: an authorized
+// access, an authorized access after a permitted manifest update, a rejected
+// manifest change, and a rejected replay.
 package main
 
 import (
@@ -78,26 +79,54 @@ func run() error {
 		"certificateHash": decision.CertificateHash,
 	})
 
-	step("Case 2: same agent, policy bound to a different manifest")
-	mismatch, err := world.ManifestMismatchPolicy()
+	step("Case 2: same agent after a permitted manifest update (modelId -> gpt-demo-v2)")
+	updated := demo.DefaultOptions()
+	current := updated.Manifest
+	current.ModelID = "gpt-demo-v2"
+	updated.CurrentManifest = &current
+	world2, err := demo.NewWorldWith(sys, updated)
 	if err != nil {
 		return err
 	}
-	ch2, err := world.NewChallenge()
+	ch2, err := world2.NewChallenge()
 	if err != nil {
 		return err
 	}
-	if _, err := world.ProveWith(ch2, mismatch, world.Issued); err != nil {
-		expect(err, passport.ErrPolicyMismatch)
+	pkg2, err := world2.Prove(ch2)
+	if err != nil {
+		return fmt.Errorf("case 2 should prove: %w", err)
+	}
+	decision2, err := world2.Access(ch2, pkg2)
+	if err != nil {
+		return fmt.Errorf("case 2 should authorize: %w", err)
+	}
+	fmt.Printf("  certificate manifest=%s… current manifest=%s… authorized=%v\n",
+		world2.Issued.Certificate.AgentManifestCommitment[:12], world2.Policy.Policy.RequestedManifestCommitment[:12], decision2.Authorized)
+
+	step("Case 3: same agent after widening permissionScope (not permitted by the policy)")
+	widened := demo.DefaultOptions()
+	wider := widened.Manifest
+	wider.PermissionScope = "travel-booking-admin"
+	widened.CurrentManifest = &wider
+	world3, err := demo.NewWorldWith(sys, widened)
+	if err != nil {
+		return err
+	}
+	ch3, err := world3.NewChallenge()
+	if err != nil {
+		return err
+	}
+	if _, err := world3.Prove(ch3); err != nil {
+		expect(err, passport.ErrManifestFieldImmutable)
 	} else {
-		return errors.New("case 2 unexpectedly produced a proof")
+		return errors.New("case 3 unexpectedly produced a proof")
 	}
 
-	step("Case 3: replay of the case 1 proof with the same nonce")
+	step("Case 4: replay of the case 1 proof with the same nonce")
 	if _, err := world.Access(ch, pkg); err != nil {
 		expect(err, verifier.ErrNonceConsumed)
 	} else {
-		return errors.New("case 3 unexpectedly authorized a replay")
+		return errors.New("case 4 unexpectedly authorized a replay")
 	}
 	return nil
 }
