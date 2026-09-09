@@ -11,10 +11,14 @@ import (
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
+	tedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/logger"
+	"github.com/consensys/gnark/std/algebra/native/twistededwards"
+	"github.com/consensys/gnark/std/hash/mimc"
 	"github.com/consensys/gnark/std/hash/poseidon2"
+	"github.com/consensys/gnark/std/signature/eddsa"
 
 	"github.com/da1suk8/zk-agent-passport/demo"
 	"github.com/da1suk8/zk-agent-passport/zkp"
@@ -53,14 +57,14 @@ func run(n int, artifacts string) error {
 		times int
 		probe frontend.Circuit
 	}{
+		{"Committee signature (EdDSA on BabyJubJub, MiMC challenge)", zkp.Quorum, &eddsaProbe{}},
 		{"Certificate hash (Poseidon2, 10 inputs)", 1, hashProbe(10)},
 		{"Policy hash (Poseidon2, 8 inputs)", 1, hashProbe(8)},
-		{"Score commitment opening (2 inputs)", 1, hashProbe(2)},
-		{"Passport commitment opening (2 inputs)", 1, hashProbe(2)},
+		{"Commitment openings (score, passport, nullifier; 2 inputs)", 3, hashProbe(2)},
 		{"Manifest opening (4 inputs)", 2, hashProbe(4)},
 		{"Manifest version policy, per field (leaf + depth-4 Merkle + checks)", zkp.ManifestFieldCount, &versionPolicyProbe{}},
-		{"32-bit comparison (score, receipt count)", 2, &compareProbe{}},
-		{"Challenge binding (3 non-zero checks)", 1, &bindingProbe{}},
+		{"32-bit comparison (score, receipt count, expiry)", 3, &compareProbe{}},
+		{"Keyset selection (2 of 3 keys) and signer distinctness", 1, &keySelectProbe{}},
 	}
 	fmt.Printf("## Constraint breakdown (gadgets compiled in isolation)\n\n")
 	fmt.Printf("| Component | Uses | Each | Subtotal | Share |\n|---|---:|---:|---:|---:|\n")
@@ -222,16 +226,43 @@ func (c *compareProbe) Define(api frontend.API) error {
 	return nil
 }
 
-// bindingProbe is the three non-zero constraints on the challenge fields.
-type bindingProbe struct {
-	X frontend.Variable `gnark:",public"`
-	Y frontend.Variable `gnark:",public"`
-	Z frontend.Variable `gnark:",public"`
+// eddsaProbe is one in-circuit EdDSA verification.
+type eddsaProbe struct {
+	Signature eddsa.Signature
+	Message   frontend.Variable
+	PublicKey eddsa.PublicKey `gnark:",public"`
 }
 
-func (c *bindingProbe) Define(api frontend.API) error {
-	api.AssertIsDifferent(c.X, 0)
-	api.AssertIsDifferent(c.Y, 0)
-	api.AssertIsDifferent(c.Z, 0)
+func (c *eddsaProbe) Define(api frontend.API) error {
+	curve, err := twistededwards.NewEdCurve(api, tedwards.BN254)
+	if err != nil {
+		return err
+	}
+	m, err := mimc.NewMiMC(api)
+	if err != nil {
+		return err
+	}
+	return eddsa.Verify(curve, c.Signature, c.Message, c.PublicKey, &m)
+}
+
+// keySelectProbe is the selection of two keys from the keyset by index plus
+// the distinct-signer check and the nonce binding.
+type keySelectProbe struct {
+	Keys  [zkp.CommitteeSize]eddsa.PublicKey `gnark:",public"`
+	Index [zkp.Quorum]frontend.Variable
+	Nonce frontend.Variable             `gnark:",public"`
+	OutX  [zkp.Quorum]frontend.Variable `gnark:",public"`
+}
+
+func (c *keySelectProbe) Define(api frontend.API) error {
+	for i := 0; i < zkp.Quorum; i++ {
+		bits := api.ToBinary(c.Index[i], 2)
+		api.AssertIsEqual(api.Mul(bits[0], bits[1]), 0)
+		x := api.Select(bits[1], c.Keys[2].A.X, api.Select(bits[0], c.Keys[1].A.X, c.Keys[0].A.X))
+		y := api.Select(bits[1], c.Keys[2].A.Y, api.Select(bits[0], c.Keys[1].A.Y, c.Keys[0].A.Y))
+		api.AssertIsEqual(api.Add(x, y), api.Add(c.OutX[i], y))
+	}
+	api.AssertIsDifferent(c.Index[0], c.Index[1])
+	api.AssertIsDifferent(c.Nonce, 0)
 	return nil
 }

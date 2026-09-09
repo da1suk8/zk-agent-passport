@@ -83,6 +83,7 @@ type World struct {
 	Issued    passport.IssuedCertificate
 	Policy    passport.PolicyBundle
 	Verifier  *verifier.Verifier
+	Keyset    passport.CommitteeKeyset
 	Options   Options
 	// CertifiedManifest is the manifest the certificate was issued for.
 	CertifiedManifest passport.Manifest
@@ -190,11 +191,11 @@ func NewWorldWith(sys *zkp.System, opts Options) (*World, error) {
 		return nil, err
 	}
 
-	var committeePublic []passport.PublicIdentity
-	for _, node := range w.Committee {
-		committeePublic = append(committeePublic, node.Public())
+	w.Keyset, err = passport.NewKeyset(passport.CommitteeKeysetID, w.Committee)
+	if err != nil {
+		return nil, err
 	}
-	w.Verifier = verifier.New(sys, committeePublic, VerifierName)
+	w.Verifier = verifier.New(sys, w.Keyset, VerifierName)
 	return w, nil
 }
 
@@ -224,6 +225,7 @@ func (w *World) ProveWith(ch passport.Challenge, policy passport.PolicyBundle, i
 		Issued:            issued,
 		Policy:            policy,
 		Challenge:         ch,
+		Keyset:            w.Keyset,
 	})
 }
 
@@ -232,15 +234,14 @@ func (w *World) Access(ch passport.Challenge, pkg *passport.ProofPackage) (verif
 	return w.AccessAt(ch, pkg, Now)
 }
 
-// AccessAt submits a proof to the verifier at a chosen time. The verifier
-// receives the redacted certificate carried in the proof package.
+// AccessAt submits a proof to the verifier at a chosen time. Nothing about
+// the certificate travels with it.
 func (w *World) AccessAt(ch passport.Challenge, pkg *passport.ProofPackage, now int64) (verifier.Decision, error) {
 	return w.Verifier.VerifyAccess(verifier.AccessRequest{
-		Presentation: pkg.Presentation,
-		Policy:       w.Policy,
-		Challenge:    ch,
-		Proof:        pkg,
-		Now:          now,
+		Policy:    w.Policy,
+		Challenge: ch,
+		Proof:     pkg,
+		Now:       now,
 	})
 }
 

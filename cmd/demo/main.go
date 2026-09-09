@@ -76,7 +76,8 @@ func run() error {
 		"authorized":            decision.Authorized,
 		"scoreDisclosed":        false,
 		"receiptCountDisclosed": false,
-		"certificateHash":       decision.CertificateHash,
+		"certificateDisclosed":  false,
+		"nullifier":             decision.Nullifier,
 	})
 
 	step("Case 2: same agent after a permitted manifest update (modelId -> gpt-demo-v2)")

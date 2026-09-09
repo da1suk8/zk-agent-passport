@@ -53,24 +53,21 @@ type Certificate struct {
 	ScoreSalt         field.Element             `json:"scoreSalt"`
 }
 
-// CommitteeKey is one trusted committee public key.
-type CommitteeKey struct {
-	NodeID    string `json:"nodeId"`
-	PublicKey []byte `json:"publicKey"`
-}
-
 // Service is the verifier's persistent state.
 type Service struct {
-	Name      string         `json:"name"`
-	Committee []CommitteeKey `json:"committee"`
-	Nonces    verifier.State `json:"nonces"`
+	Name   string                   `json:"name"`
+	Keyset passport.CommitteeKeyset `json:"keyset"`
+	Nonces verifier.State           `json:"nonces"`
 }
 
-// Challenge is what the service publishes for one access attempt.
+// Challenge is what the service publishes for one access attempt. It
+// carries the keyset the service trusts, which the agent needs to build the
+// statement it proves.
 type Challenge struct {
 	Policy        passport.Policy                `json:"policy"`
 	PolicyHash    field.Element                  `json:"policyHash"`
 	VersionPolicy passport.ManifestVersionPolicy `json:"versionPolicy"`
+	Keyset        passport.CommitteeKeyset       `json:"keyset"`
 	Challenge     passport.Challenge             `json:"challenge"`
 }
 

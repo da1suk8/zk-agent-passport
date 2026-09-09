@@ -143,14 +143,16 @@ func enroll(dir, ratingList string) error {
 		validated = append(validated, v)
 	}
 	var committee []*passport.CommitteeNode
-	var keys []store.CommitteeKey
 	for _, name := range []string{"committee-1", "committee-2", "committee-3"} {
 		node, err := passport.NewCommitteeNode(name)
 		if err != nil {
 			return err
 		}
 		committee = append(committee, node)
-		keys = append(keys, store.CommitteeKey{NodeID: node.NodeID, PublicKey: node.PublicKey})
+	}
+	keyset, err := passport.NewKeyset(passport.CommitteeKeysetID, committee)
+	if err != nil {
+		return err
 	}
 	issued, err := passport.IssueScoreCertificate(committee, passport.AggregationRequest{
 		Receipts: validated, AggregationEpoch: demo.AggregationEpoch, IssuedAt: now, ExpiresAt: now + 3600,
@@ -163,12 +165,12 @@ func enroll(dir, ratingList string) error {
 	}, 0o600); err != nil {
 		return err
 	}
-	service := store.Service{Name: demo.VerifierName, Committee: keys}
+	service := store.Service{Name: demo.VerifierName, Keyset: keyset}
 	if err := store.Save(dir, store.ServiceName, service, 0o644); err != nil {
 		return err
 	}
 	fmt.Printf("certificate issued for manifest %s (ratings %v, expires in 1h)\n", short(agent.AgentManifestCommitment), ratings)
-	fmt.Printf("service.json now trusts committee keys %s, %s, %s\n", keys[0].NodeID, keys[1].NodeID, keys[2].NodeID)
+	fmt.Printf("service.json now trusts committee keyset %s (%s, %s, %s)\n", keyset.ID, keyset.Keys[0].NodeID, keyset.Keys[1].NodeID, keyset.Keys[2].NodeID)
 	return nil
 }
 
@@ -233,6 +235,7 @@ func prove(dir, artifacts string) error {
 		Issued:            passport.IssuedCertificate{Certificate: cert.Certificate, Score: cert.Score, ScoreSalt: cert.ScoreSalt},
 		Policy:            bundle,
 		Challenge:         ch.Challenge,
+		Keyset:            ch.Keyset,
 	})
 	if err != nil {
 		return fmt.Errorf("cannot prove: %w", err)
@@ -241,7 +244,7 @@ func prove(dir, artifacts string) error {
 	if err := store.Save(dir, store.ProofName, pkg, 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("proof written to %s/%s (load %s, prove %s); exiting\n", dir, store.ProofName, loaded.Round(time.Millisecond), proveTook.Round(time.Millisecond))
+	fmt.Printf("proof written to %s/%s (load %s, prove %s); nullifier=%s…; exiting\n", dir, store.ProofName, loaded.Round(time.Millisecond), proveTook.Round(time.Millisecond), pkg.Statement.Nullifier[:14])
 	return nil
 }
 

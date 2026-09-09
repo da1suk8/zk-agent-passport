@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/consensys/gnark-crypto/ecc"
+	tedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/frontend"
@@ -23,20 +24,10 @@ import (
 // ErrInvalidProof is returned when a proof does not verify for a statement.
 var ErrInvalidProof = errors.New("ZK proof is invalid for this statement")
 
-// PublicInputs is the statement a verifier checks a proof against. Field
-// order matches PassportCircuit.
+// PublicInputs is the statement a verifier checks a proof against. It
+// contains nothing about the certificate itself: only the policy, the
+// challenge, the nullifier, and the committee keyset.
 type PublicInputs struct {
-	CertificateHash         field.Element
-	CertificateID           field.Element
-	PassportCommitment      field.Element
-	AgentManifestCommitment field.Element
-	TaskDomain              field.Element
-	AggregationEpoch        field.Element
-	ScoreCommitment         field.Element
-	CertificateIssuedAt     field.Element
-	CertificateExpiresAt    field.Element
-	CommitteeKeysetID       field.Element
-
 	PolicyHash                  field.Element
 	PolicyVersion               field.Element
 	RequiredThreshold           field.Element
@@ -50,6 +41,13 @@ type PublicInputs struct {
 	VerifierID     field.Element
 	Nonce          field.Element
 	ProofExpiresAt field.Element
+
+	Nullifier field.Element
+
+	CommitteeKeysetID field.Element
+	// CommitteeKeys are the keyset's EdDSA (BabyJubJub) public keys, in
+	// their canonical compressed encoding.
+	CommitteeKeys [CommitteeSize][]byte
 }
 
 // MerkleWitness is one allowlist inclusion path.
@@ -58,14 +56,30 @@ type MerkleWitness struct {
 	Siblings [AllowlistDepth]field.Element
 }
 
-// Witness is the full assignment: the public statement plus the secrets.
+// Witness is the full assignment: the public statement plus the certificate
+// and the secrets.
 type Witness struct {
 	PublicInputs
+
+	CertificateID           field.Element
+	PassportCommitment      field.Element
+	AgentManifestCommitment field.Element
+	TaskDomain              field.Element
+	AggregationEpoch        field.Element
+	ScoreCommitment         field.Element
+	ReceiptCount            field.Element
+	CertificateIssuedAt     field.Element
+	CertificateExpiresAt    field.Element
+
+	// Signatures are EdDSA signatures over the certificate hash by the
+	// keyset entries named in SignerIndex.
+	Signatures  [Quorum][]byte
+	SignerIndex [Quorum]int
+
 	Score        field.Element
 	ScoreSalt    field.Element
 	AgentSecret  field.Element
 	PassportSalt field.Element
-	ReceiptCount field.Element
 
 	CertifiedManifest [ManifestFieldCount]field.Element
 	CurrentManifest   [ManifestFieldCount]field.Element
@@ -250,7 +264,6 @@ func (s *System) Verify(p *Proof, statement PublicInputs) error {
 }
 
 func toAssignment(w Witness, publicOnly bool) (*PassportCircuit, error) {
-	conv := func(e field.Element) (*big.Int, error) { return field.ToBig(e) }
 	var c PassportCircuit
 	var err error
 	set := func(dst *frontend.Variable, e field.Element) {
@@ -258,21 +271,11 @@ func toAssignment(w Witness, publicOnly bool) (*PassportCircuit, error) {
 			return
 		}
 		var v *big.Int
-		if v, err = conv(e); err == nil {
+		if v, err = field.ToBig(e); err == nil {
 			*dst = v
 		}
 	}
 	p := w.PublicInputs
-	set(&c.CertificateHash, p.CertificateHash)
-	set(&c.CertificateID, p.CertificateID)
-	set(&c.PassportCommitment, p.PassportCommitment)
-	set(&c.AgentManifestCommitment, p.AgentManifestCommitment)
-	set(&c.TaskDomain, p.TaskDomain)
-	set(&c.AggregationEpoch, p.AggregationEpoch)
-	set(&c.ScoreCommitment, p.ScoreCommitment)
-	set(&c.CertificateIssuedAt, p.CertificateIssuedAt)
-	set(&c.CertificateExpiresAt, p.CertificateExpiresAt)
-	set(&c.CommitteeKeysetID, p.CommitteeKeysetID)
 	set(&c.PolicyHash, p.PolicyHash)
 	set(&c.PolicyVersion, p.PolicyVersion)
 	set(&c.RequiredThreshold, p.RequiredThreshold)
@@ -285,12 +288,35 @@ func toAssignment(w Witness, publicOnly bool) (*PassportCircuit, error) {
 	set(&c.VerifierID, p.VerifierID)
 	set(&c.Nonce, p.Nonce)
 	set(&c.ProofExpiresAt, p.ProofExpiresAt)
+	set(&c.Nullifier, p.Nullifier)
+	set(&c.CommitteeKeysetID, p.CommitteeKeysetID)
+	for i := 0; i < CommitteeSize; i++ {
+		if len(p.CommitteeKeys[i]) == 0 {
+			return nil, fmt.Errorf("assignment: committee key %d is missing", i)
+		}
+		c.CommitteeKeys[i].Assign(tedwards.BN254, p.CommitteeKeys[i])
+	}
 	if !publicOnly {
+		set(&c.CertificateID, w.CertificateID)
+		set(&c.PassportCommitment, w.PassportCommitment)
+		set(&c.AgentManifestCommitment, w.AgentManifestCommitment)
+		set(&c.TaskDomain, w.TaskDomain)
+		set(&c.AggregationEpoch, w.AggregationEpoch)
+		set(&c.ScoreCommitment, w.ScoreCommitment)
+		set(&c.ReceiptCount, w.ReceiptCount)
+		set(&c.CertificateIssuedAt, w.CertificateIssuedAt)
+		set(&c.CertificateExpiresAt, w.CertificateExpiresAt)
+		for i := 0; i < Quorum; i++ {
+			if len(w.Signatures[i]) == 0 {
+				return nil, fmt.Errorf("assignment: signature %d is missing", i)
+			}
+			c.Signatures[i].Assign(tedwards.BN254, w.Signatures[i])
+			c.SignerIndex[i] = w.SignerIndex[i]
+		}
 		set(&c.Score, w.Score)
 		set(&c.ScoreSalt, w.ScoreSalt)
 		set(&c.AgentSecret, w.AgentSecret)
 		set(&c.PassportSalt, w.PassportSalt)
-		set(&c.ReceiptCount, w.ReceiptCount)
 		for i := 0; i < ManifestFieldCount; i++ {
 			set(&c.CertifiedManifest[i], w.CertifiedManifest[i])
 			set(&c.CurrentManifest[i], w.CurrentManifest[i])

@@ -2,11 +2,15 @@
 package zkp
 
 import (
+	tedwards "github.com/consensys/gnark-crypto/ecc/twistededwards"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/std/algebra/native/twistededwards"
+	"github.com/consensys/gnark/std/hash/mimc"
 	"github.com/consensys/gnark/std/hash/poseidon2"
+	"github.com/consensys/gnark/std/signature/eddsa"
 )
 
-// ScoreBits bounds scores and thresholds to unsigned 32-bit values.
+// ScoreBits bounds scores, counts, and timestamps to unsigned 32-bit values.
 const ScoreBits = 32
 
 // ManifestFieldCount is the number of manifest fields bound by a passport:
@@ -16,24 +20,21 @@ const ManifestFieldCount = 4
 // AllowlistDepth is the Merkle depth of a manifest allowlist.
 const AllowlistDepth = 4
 
-// PassportCircuit proves that the holder of a passport secret owns a score
-// certificate whose committed score and hidden receipt count satisfy a
-// public policy, and that the agent's current manifest differs from the
-// certified one only in the ways the policy permits, without revealing the
-// score, the receipt count, the secret, or the manifests.
-type PassportCircuit struct {
-	// Certificate statement, all public.
-	CertificateHash         frontend.Variable `gnark:",public"`
-	CertificateID           frontend.Variable `gnark:",public"`
-	PassportCommitment      frontend.Variable `gnark:",public"`
-	AgentManifestCommitment frontend.Variable `gnark:",public"`
-	TaskDomain              frontend.Variable `gnark:",public"`
-	AggregationEpoch        frontend.Variable `gnark:",public"`
-	ScoreCommitment         frontend.Variable `gnark:",public"`
-	CertificateIssuedAt     frontend.Variable `gnark:",public"`
-	CertificateExpiresAt    frontend.Variable `gnark:",public"`
-	CommitteeKeysetID       frontend.Variable `gnark:",public"`
+// CommitteeSize is the number of committee nodes in a keyset; Quorum is how
+// many of their signatures a certificate needs.
+const (
+	CommitteeSize = 3
+	Quorum        = 2
+)
 
+// PassportCircuit proves, without revealing the certificate, that the
+// holder of a passport secret owns a committee-signed score certificate
+// whose hidden score and receipt count satisfy a public policy, whose
+// domain and epoch match the policy, that is still valid when the proof
+// expires, and whose certified manifest differs from the current one only
+// as the policy permits. The only agent-specific public value is a
+// per-verifier nullifier, so two verifiers cannot link the same passport.
+type PassportCircuit struct {
 	// Policy statement, all public.
 	PolicyHash                  frontend.Variable `gnark:",public"`
 	PolicyVersion               frontend.Variable `gnark:",public"`
@@ -50,14 +51,36 @@ type PassportCircuit struct {
 	Nonce          frontend.Variable `gnark:",public"`
 	ProofExpiresAt frontend.Variable `gnark:",public"`
 
-	// Witnesses, never exposed to the verifier.
+	// Nullifier = Hash(agentSecret, verifierId): stable for one verifier,
+	// unrelated across verifiers.
+	Nullifier frontend.Variable `gnark:",public"`
+
+	// Committee keyset the verifier trusts, public.
+	CommitteeKeysetID frontend.Variable              `gnark:",public"`
+	CommitteeKeys     [CommitteeSize]eddsa.PublicKey `gnark:",public"`
+
+	// Certificate, private. Its hash is recomputed in-circuit and is what
+	// the committee signed.
+	CertificateID           frontend.Variable
+	PassportCommitment      frontend.Variable
+	AgentManifestCommitment frontend.Variable
+	TaskDomain              frontend.Variable
+	AggregationEpoch        frontend.Variable
+	ScoreCommitment         frontend.Variable
+	ReceiptCount            frontend.Variable
+	CertificateIssuedAt     frontend.Variable
+	CertificateExpiresAt    frontend.Variable
+
+	// Quorum of committee signatures over the certificate hash, private.
+	// SignerIndex says which keyset entry each signature belongs to.
+	Signatures  [Quorum]eddsa.Signature
+	SignerIndex [Quorum]frontend.Variable
+
+	// Secrets.
 	Score        frontend.Variable
 	ScoreSalt    frontend.Variable
 	AgentSecret  frontend.Variable
 	PassportSalt frontend.Variable
-	// ReceiptCount is part of the certificate but stays hidden; the circuit
-	// proves it meets the policy's minimum.
-	ReceiptCount frontend.Variable
 
 	// CertifiedManifest opens AgentManifestCommitment; CurrentManifest opens
 	// RequestedManifestCommitment. For every field that differs, the
@@ -80,8 +103,9 @@ func (c *PassportCircuit) Define(api frontend.API) error {
 		return h.Sum()
 	}
 
-	// The certificate hash commits to every certificate field.
-	api.AssertIsEqual(hash(
+	// The certificate hash commits to every certificate field, including
+	// the keyset it was issued under.
+	certificateHash := hash(
 		c.CertificateID,
 		c.PassportCommitment,
 		c.AgentManifestCommitment,
@@ -92,7 +116,24 @@ func (c *PassportCircuit) Define(api frontend.API) error {
 		c.CertificateIssuedAt,
 		c.CertificateExpiresAt,
 		c.CommitteeKeysetID,
-	), c.CertificateHash)
+	)
+
+	// A quorum of distinct committee nodes signed that hash.
+	curve, err := twistededwards.NewEdCurve(api, tedwards.BN254)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < Quorum; i++ {
+		key := selectKey(api, c.CommitteeKeys, c.SignerIndex[i])
+		m, err := mimc.NewMiMC(api)
+		if err != nil {
+			return err
+		}
+		if err := eddsa.Verify(curve, c.Signatures[i], certificateHash, key, &m); err != nil {
+			return err
+		}
+	}
+	api.AssertIsDifferent(c.SignerIndex[0], c.SignerIndex[1])
 
 	// The policy hash commits to every policy field.
 	api.AssertIsEqual(hash(
@@ -106,13 +147,10 @@ func (c *PassportCircuit) Define(api frontend.API) error {
 		c.ManifestAllowlistRoot,
 	), c.PolicyHash)
 
-	// Opening of the score commitment.
+	// Openings: score, passport, nullifier, both manifests.
 	api.AssertIsEqual(hash(c.Score, c.ScoreSalt), c.ScoreCommitment)
-
-	// Knowledge of the passport secret behind the passport commitment.
 	api.AssertIsEqual(hash(c.AgentSecret, c.PassportSalt), c.PassportCommitment)
-
-	// Openings of both manifest commitments.
+	api.AssertIsEqual(hash(c.AgentSecret, c.VerifierID), c.Nullifier)
 	api.AssertIsEqual(hash(c.CertifiedManifest[:]...), c.AgentManifestCommitment)
 	api.AssertIsEqual(hash(c.CurrentManifest[:]...), c.RequestedManifestCommitment)
 
@@ -141,23 +179,33 @@ func (c *PassportCircuit) Define(api frontend.API) error {
 	api.AssertIsEqual(c.TaskDomain, c.RequestedTaskDomain)
 	api.AssertIsEqual(c.AggregationEpoch, c.RequestedAggregationEpoch)
 
-	// score >= requiredThreshold over unsigned 32-bit values. Both operands
-	// are range-checked so that the difference cannot wrap around the field.
-	api.ToBinary(c.Score, ScoreBits)
-	api.ToBinary(c.RequiredThreshold, ScoreBits)
-	api.ToBinary(api.Sub(c.Score, c.RequiredThreshold), ScoreBits)
-
-	// receiptCount >= minimumReceiptCount, likewise over 32-bit values. The
-	// count stays private; only the fact that it meets the minimum is shown.
-	api.ToBinary(c.ReceiptCount, ScoreBits)
-	api.ToBinary(c.MinimumReceiptCount, ScoreBits)
-	api.ToBinary(api.Sub(c.ReceiptCount, c.MinimumReceiptCount), ScoreBits)
+	// Unsigned 32-bit comparisons: score >= threshold, receiptCount >=
+	// minimum, and the certificate outlives the proof.
+	assertGreaterEqual32(api, c.Score, c.RequiredThreshold)
+	assertGreaterEqual32(api, c.ReceiptCount, c.MinimumReceiptCount)
+	assertGreaterEqual32(api, c.CertificateExpiresAt, c.ProofExpiresAt)
 
 	// Groth16 does not bind public inputs that appear in no constraint. The
-	// challenge fields must therefore be constrained explicitly; requiring
-	// them to be non-zero is the cheapest meaningful constraint.
-	api.AssertIsDifferent(c.VerifierID, 0)
+	// nonce is otherwise unused, so it is constrained to be non-zero.
 	api.AssertIsDifferent(c.Nonce, 0)
-	api.AssertIsDifferent(c.ProofExpiresAt, 0)
 	return nil
+}
+
+// assertGreaterEqual32 enforces a >= b with both operands range-checked to
+// 32 bits so that the difference cannot wrap around the field.
+func assertGreaterEqual32(api frontend.API, a, b frontend.Variable) {
+	api.ToBinary(a, ScoreBits)
+	api.ToBinary(b, ScoreBits)
+	api.ToBinary(api.Sub(a, b), ScoreBits)
+}
+
+// selectKey picks keyset entry index (0..CommitteeSize-1) with a binary
+// decomposition of the index, and rejects indices out of range.
+func selectKey(api frontend.API, keys [CommitteeSize]eddsa.PublicKey, index frontend.Variable) eddsa.PublicKey {
+	bits := api.ToBinary(index, 2)
+	api.AssertIsEqual(api.Mul(bits[0], bits[1]), 0) // index != 3
+	var key eddsa.PublicKey
+	key.A.X = api.Select(bits[1], keys[2].A.X, api.Select(bits[0], keys[1].A.X, keys[0].A.X))
+	key.A.Y = api.Select(bits[1], keys[2].A.Y, api.Select(bits[0], keys[1].A.Y, keys[0].A.Y))
+	return key
 }

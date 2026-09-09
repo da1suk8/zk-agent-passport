@@ -7,7 +7,6 @@
 package main
 
 import (
-	"crypto/ed25519"
 	"errors"
 	"flag"
 	"fmt"
@@ -64,11 +63,7 @@ func loadVerifier(dir, artifacts string) (*verifier.Verifier, store.Service, *zk
 	if err != nil {
 		return nil, svc, nil, err
 	}
-	var committee []passport.PublicIdentity
-	for _, k := range svc.Committee {
-		committee = append(committee, passport.PublicIdentity{NodeID: k.NodeID, PublicKey: ed25519.PublicKey(k.PublicKey)})
-	}
-	v := verifier.New(sys, committee, svc.Name)
+	v := verifier.New(sys, svc.Keyset, svc.Name)
 	v.ImportState(svc.Nonces)
 	return v, svc, sys, nil
 }
@@ -106,7 +101,7 @@ func challenge(dir, artifacts string, threshold, minimum int64, strict bool) err
 		return err
 	}
 	if err := store.Save(dir, store.ChallengeName, store.Challenge{
-		Policy: bundle.Policy, PolicyHash: bundle.PolicyHash, VersionPolicy: vp, Challenge: ch,
+		Policy: bundle.Policy, PolicyHash: bundle.PolicyHash, VersionPolicy: vp, Keyset: v.Keyset(), Challenge: ch,
 	}, 0o644); err != nil {
 		return err
 	}
@@ -136,11 +131,10 @@ func verify(dir, artifacts string) error {
 	}
 	t := time.Now()
 	decision, verr := v.VerifyAccess(verifier.AccessRequest{
-		Presentation: pkg.Presentation,
-		Policy:       bundle,
-		Challenge:    ch.Challenge,
-		Proof:        &pkg,
-		Now:          time.Now().Unix(),
+		Policy:    bundle,
+		Challenge: ch.Challenge,
+		Proof:     &pkg,
+		Now:       time.Now().Unix(),
 	})
 	took := time.Since(t)
 	svc.Nonces = v.ExportState()
@@ -159,7 +153,7 @@ func verify(dir, artifacts string) error {
 		fmt.Printf("REJECTED (%s): %v\n", took.Round(time.Millisecond), verr)
 		os.Exit(2)
 	}
-	fmt.Printf("AUTHORIZED (%s) certificateHash=%s… nonce consumed; used nonces=%d\n", took.Round(time.Millisecond), decision.CertificateHash[:14], len(svc.Nonces.Used))
+	fmt.Printf("AUTHORIZED (%s) nullifier=%s… nonce consumed; used nonces=%d\n", took.Round(time.Millisecond), decision.Nullifier[:14], len(svc.Nonces.Used))
 	return nil
 }
 

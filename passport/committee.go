@@ -1,40 +1,72 @@
 package passport
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
+	"github.com/consensys/gnark-crypto/ecc/bn254/twistededwards/eddsa"
+
 	"github.com/da1suk8/zk-agent-passport/field"
+	"github.com/da1suk8/zk-agent-passport/zkp"
 )
 
 // CommitteeKeysetID identifies the committee key set used by this MVP.
 const CommitteeKeysetID field.Element = "1"
 
-// Quorum is the number of distinct committee signatures a certificate needs.
-const Quorum = 2
+// CommitteeSize and Quorum mirror the circuit: a keyset has CommitteeSize
+// nodes and a certificate needs Quorum distinct signatures.
+const (
+	CommitteeSize = zkp.CommitteeSize
+	Quorum        = zkp.Quorum
+)
 
 // Committee errors.
 var (
-	ErrEmptyBatch     = errors.New("at least one receipt is required")
-	ErrBatchMismatch  = errors.New("receipt does not match aggregation batch")
-	ErrCommitteeSmall = errors.New("committee needs at least three nodes")
+	ErrEmptyBatch    = errors.New("at least one receipt is required")
+	ErrBatchMismatch = errors.New("receipt does not match aggregation batch")
+	ErrKeysetSize    = errors.New("a committee keyset needs exactly three nodes")
 )
 
-// CommitteeNode holds one additive share of every rating in a batch and only
-// ever sees its own partial sum.
+// CommitteeNode holds one additive share of every rating in a batch and
+// signs certificates with an EdDSA key on BabyJubJub, which the passport
+// circuit can verify.
 type CommitteeNode struct {
-	*Identity
-	partials map[string]field.Element
+	NodeID    string
+	PublicKey []byte // compressed EdDSA public key
+	private   *eddsa.PrivateKey
+	partials  map[string]field.Element
 }
 
 // NewCommitteeNode creates a committee node with a fresh signing key.
 func NewCommitteeNode(nodeID string) (*CommitteeNode, error) {
-	id, err := NewIdentity(nodeID)
+	key, err := eddsa.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("committee node %s: %w", nodeID, err)
+	}
+	return &CommitteeNode{
+		NodeID:    nodeID,
+		PublicKey: key.PublicKey.Bytes(),
+		private:   key,
+		partials:  map[string]field.Element{},
+	}, nil
+}
+
+// Public returns the node's shareable key.
+func (n *CommitteeNode) Public() CommitteePublicKey {
+	return CommitteePublicKey{NodeID: n.NodeID, PublicKey: n.PublicKey}
+}
+
+// Sign produces an EdDSA signature over a certificate hash. The challenge
+// hash is MiMC, matching the in-circuit verifier.
+func (n *CommitteeNode) Sign(hash field.Element) ([]byte, error) {
+	msg, err := field.Bytes(hash)
 	if err != nil {
 		return nil, err
 	}
-	return &CommitteeNode{Identity: id, partials: map[string]field.Element{}}, nil
+	return n.private.Sign(msg, mimc.NewMiMC())
 }
 
 // Accumulate adds a share to the node's partial sum for a batch.
@@ -59,6 +91,64 @@ func (n *CommitteeNode) PartialSum(batchKey string) field.Element {
 	return "0"
 }
 
+// CommitteePublicKey is one node's verification key.
+type CommitteePublicKey struct {
+	NodeID    string `json:"nodeId"`
+	PublicKey []byte `json:"publicKey"`
+}
+
+// CommitteeKeyset is the ordered set of committee keys a verifier trusts.
+// Its entries are public inputs of the proof, and the same for every agent.
+type CommitteeKeyset struct {
+	ID   field.Element                     `json:"id"`
+	Keys [CommitteeSize]CommitteePublicKey `json:"keys"`
+}
+
+// NewKeyset builds the keyset of a committee.
+func NewKeyset(id field.Element, nodes []*CommitteeNode) (CommitteeKeyset, error) {
+	if len(nodes) != CommitteeSize {
+		return CommitteeKeyset{}, fmt.Errorf("%w: got %d", ErrKeysetSize, len(nodes))
+	}
+	ks := CommitteeKeyset{ID: id}
+	for i, n := range nodes {
+		ks.Keys[i] = n.Public()
+	}
+	return ks, nil
+}
+
+// Index returns the position of a node in the keyset.
+func (k CommitteeKeyset) Index(nodeID string) (int, bool) {
+	for i, key := range k.Keys {
+		if key.NodeID == nodeID {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// PublicKeys returns the raw keys in keyset order, as the circuit expects.
+func (k CommitteeKeyset) PublicKeys() [CommitteeSize][]byte {
+	var out [CommitteeSize][]byte
+	for i, key := range k.Keys {
+		out[i] = key.PublicKey
+	}
+	return out
+}
+
+// VerifyCommitteeSignature checks a committee signature natively. The
+// circuit performs the same check; this is for tools and tests.
+func VerifyCommitteeSignature(publicKey []byte, hash field.Element, signature []byte) (bool, error) {
+	var pub eddsa.PublicKey
+	if _, err := pub.SetBytes(publicKey); err != nil {
+		return false, err
+	}
+	msg, err := field.Bytes(hash)
+	if err != nil {
+		return false, err
+	}
+	return pub.Verify(signature, msg, mimc.NewMiMC())
+}
+
 // BatchKey names one aggregation batch: one passport, one manifest, one
 // domain, one epoch.
 func BatchKey(passportCommitment, manifestCommitment, taskDomain, aggregationEpoch field.Element) string {
@@ -66,7 +156,8 @@ func BatchKey(passportCommitment, manifestCommitment, taskDomain, aggregationEpo
 }
 
 // CertificatePayload is the signed content of a score certificate. The score
-// itself appears only as a hiding commitment.
+// itself appears only as a hiding commitment. The whole payload stays with
+// the agent; a verifier never sees it.
 type CertificatePayload struct {
 	CertificateID           field.Element `json:"certificateId"`
 	PassportCommitment      field.Element `json:"passportCommitment"`
@@ -80,56 +171,16 @@ type CertificatePayload struct {
 	CommitteeKeysetID       field.Element `json:"committeeKeysetId"`
 }
 
-// CommitteeSignature is one node's signature over the certificate hash.
+// CommitteeSignature is one node's EdDSA signature over the certificate hash.
 type CommitteeSignature struct {
 	NodeID    string `json:"nodeId"`
-	Signature string `json:"signature"`
+	Signature []byte `json:"signature"`
 }
 
 // ScoreCertificate is a payload plus a quorum of committee signatures.
 type ScoreCertificate struct {
 	CertificatePayload
 	Signatures []CommitteeSignature `json:"signatures"`
-}
-
-// CertificatePresentation is what the agent shows a verifier: the
-// certificate hash, the committee signatures over it, and the certificate
-// fields the verifier needs. The receipt count is withheld; the proof shows
-// that the hash opens to a count meeting the policy's minimum, and that the
-// presented fields are the ones behind the hash.
-type CertificatePresentation struct {
-	CertificateHash         field.Element        `json:"certificateHash"`
-	CertificateID           field.Element        `json:"certificateId"`
-	PassportCommitment      field.Element        `json:"passportCommitment"`
-	AgentManifestCommitment field.Element        `json:"agentManifestCommitment"`
-	TaskDomain              field.Element        `json:"taskDomain"`
-	AggregationEpoch        field.Element        `json:"aggregationEpoch"`
-	ScoreCommitment         field.Element        `json:"scoreCommitment"`
-	IssuedAt                field.Element        `json:"issuedAt"`
-	ExpiresAt               field.Element        `json:"expiresAt"`
-	CommitteeKeysetID       field.Element        `json:"committeeKeysetId"`
-	Signatures              []CommitteeSignature `json:"signatures"`
-}
-
-// Present redacts the certificate for a verifier.
-func (c ScoreCertificate) Present() (CertificatePresentation, error) {
-	hash, err := CertificateHash(c.CertificatePayload)
-	if err != nil {
-		return CertificatePresentation{}, err
-	}
-	return CertificatePresentation{
-		CertificateHash:         hash,
-		CertificateID:           c.CertificateID,
-		PassportCommitment:      c.PassportCommitment,
-		AgentManifestCommitment: c.AgentManifestCommitment,
-		TaskDomain:              c.TaskDomain,
-		AggregationEpoch:        c.AggregationEpoch,
-		ScoreCommitment:         c.ScoreCommitment,
-		IssuedAt:                c.IssuedAt,
-		ExpiresAt:               c.ExpiresAt,
-		CommitteeKeysetID:       c.CommitteeKeysetID,
-		Signatures:              append([]CommitteeSignature(nil), c.Signatures...),
-	}, nil
 }
 
 // IssuedCertificate is what the passport holder receives over an
@@ -172,8 +223,8 @@ type AggregationRequest struct {
 // shares, the partial sums are combined into the score, and a quorum of nodes
 // signs a certificate over the score commitment.
 func IssueScoreCertificate(committee []*CommitteeNode, req AggregationRequest) (IssuedCertificate, error) {
-	if len(committee) < 3 {
-		return IssuedCertificate{}, ErrCommitteeSmall
+	if len(committee) != CommitteeSize {
+		return IssuedCertificate{}, fmt.Errorf("%w: got %d", ErrKeysetSize, len(committee))
 	}
 	if len(req.Receipts) == 0 {
 		return IssuedCertificate{}, ErrEmptyBatch
@@ -198,7 +249,7 @@ func IssueScoreCertificate(committee []*CommitteeNode, req AggregationRequest) (
 		if err != nil {
 			return IssuedCertificate{}, err
 		}
-		for i := 0; i < 3; i++ {
+		for i := 0; i < CommitteeSize; i++ {
 			if err := committee[i].Accumulate(batchKey, shares[i]); err != nil {
 				return IssuedCertificate{}, err
 			}
@@ -208,7 +259,7 @@ func IssueScoreCertificate(committee []*CommitteeNode, req AggregationRequest) (
 	// Reconstruct the score from the partial sums. Individual ratings are
 	// never reconstructed, only their total.
 	score := field.Element("0")
-	for i := 0; i < 3; i++ {
+	for i := 0; i < CommitteeSize; i++ {
 		var err error
 		if score, err = field.Add(score, committee[i].PartialSum(batchKey)); err != nil {
 			return IssuedCertificate{}, err
@@ -243,16 +294,13 @@ func IssueScoreCertificate(committee []*CommitteeNode, req AggregationRequest) (
 	if err != nil {
 		return IssuedCertificate{}, err
 	}
-	msg, err := field.Bytes(hash)
-	if err != nil {
-		return IssuedCertificate{}, err
-	}
 	cert := ScoreCertificate{CertificatePayload: payload}
 	for _, node := range committee[:Quorum] {
-		cert.Signatures = append(cert.Signatures, CommitteeSignature{
-			NodeID:    node.NodeID,
-			Signature: node.Sign(msg),
-		})
+		sig, err := node.Sign(hash)
+		if err != nil {
+			return IssuedCertificate{}, err
+		}
+		cert.Signatures = append(cert.Signatures, CommitteeSignature{NodeID: node.NodeID, Signature: sig})
 	}
 	return IssuedCertificate{Certificate: cert, Score: score, ScoreSalt: scoreSalt}, nil
 }

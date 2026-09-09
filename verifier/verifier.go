@@ -1,9 +1,11 @@
-// Package verifier implements the service-side checks: committee signatures,
-// expiry, policy match, nonce issuance and consumption, and the ZK proof.
+// Package verifier implements the service-side checks. With the certificate
+// hidden inside the proof, the verifier's own work shrinks to: the proof is
+// still valid in time, the policy is the one it published, the nonce is one
+// it issued and has not consumed, and the proof verifies against a
+// statement it rebuilds itself.
 package verifier
 
 import (
-	"crypto/ed25519"
 	"errors"
 	"fmt"
 
@@ -14,26 +16,18 @@ import (
 
 // Verification failures.
 var (
-	ErrUnknownKeyset      = errors.New("certificate uses an unknown committee keyset")
-	ErrCertificateExpired = errors.New("certificate is expired")
-	ErrProofExpired       = errors.New("proof is expired")
-	ErrPolicyHash         = errors.New("policy hash does not match the policy")
-	ErrQuorum             = errors.New("certificate requires signatures from two committee nodes")
-	ErrUnknownNonce       = errors.New("nonce was not issued by this verifier")
-	ErrNonceConsumed      = errors.New("nonce has already been consumed")
-	ErrPolicyMismatch     = passport.ErrPolicyMismatch
-	ErrInvalidProof       = zkp.ErrInvalidProof
+	ErrProofExpired  = errors.New("proof is expired")
+	ErrPolicyHash    = errors.New("policy hash does not match the policy")
+	ErrUnknownNonce  = errors.New("nonce was not issued by this verifier")
+	ErrNonceConsumed = errors.New("nonce has already been consumed")
+	ErrInvalidProof  = zkp.ErrInvalidProof
 )
 
-// Checks names the verifier's checks, in the order they run. The verifier
-// stops at the first failure and reports the rest as skipped.
+// Checks names the verifier's checks, in the order they run. Certificate
+// expiry, committee quorum, and policy match are enforced inside the proof.
 var Checks = []string{
-	"keyset-known",
-	"certificate-unexpired",
 	"proof-unexpired",
 	"policy-hash",
-	"policy-match",
-	"committee-quorum",
 	"nonce-issued",
 	"nonce-unused",
 	"proof-valid",
@@ -57,31 +51,33 @@ const (
 // challenges it later accepts, so a proof can only be bound to a nonce this
 // verifier handed out.
 type Verifier struct {
-	sys           *zkp.System
-	name          string
-	verifierID    field.Element
-	ttl           int64
-	committeeKeys map[string]ed25519.PublicKey
-	pending       map[string]field.Element // nonce key -> proofExpiresAt
-	used          map[string]struct{}
+	sys        *zkp.System
+	name       string
+	verifierID field.Element
+	ttl        int64
+	keyset     passport.CommitteeKeyset
+	pending    map[string]field.Element // nonce key -> proofExpiresAt
+	used       map[string]struct{}
 }
 
 // New creates a verifier named verifierName that trusts the given committee
-// public keys.
-func New(sys *zkp.System, committee []passport.PublicIdentity, verifierName string) *Verifier {
-	keys := make(map[string]ed25519.PublicKey, len(committee))
-	for _, node := range committee {
-		keys[node.NodeID] = node.PublicKey
-	}
+// keyset.
+func New(sys *zkp.System, keyset passport.CommitteeKeyset, verifierName string) *Verifier {
 	return &Verifier{
-		sys:           sys,
-		name:          verifierName,
-		verifierID:    field.FromText(verifierName),
-		ttl:           passport.DefaultChallengeTTL,
-		committeeKeys: keys,
-		pending:       map[string]field.Element{},
-		used:          map[string]struct{}{},
+		sys:        sys,
+		name:       verifierName,
+		verifierID: field.FromText(verifierName),
+		ttl:        passport.DefaultChallengeTTL,
+		keyset:     keyset,
+		pending:    map[string]field.Element{},
+		used:       map[string]struct{}{},
 	}
+}
+
+// Keyset returns the committee keyset this verifier trusts; agents need it
+// to build the statement they prove.
+func (v *Verifier) Keyset() passport.CommitteeKeyset {
+	return v.keyset
 }
 
 // State is the verifier's nonce bookkeeping, so that a service can persist
@@ -130,23 +126,23 @@ func nonceKey(ch passport.Challenge) string {
 	return ch.VerifierID + ":" + ch.Nonce
 }
 
-// AccessRequest is what an agent submits. The certificate arrives redacted:
-// the verifier never sees the receipt count, only the hash the committee
-// signed and the fields the proof binds to that hash.
+// AccessRequest is what an agent submits: the proof and its statement. No
+// certificate travels with it.
 type AccessRequest struct {
-	Presentation passport.CertificatePresentation
-	Policy       passport.PolicyBundle
-	Challenge    passport.Challenge
-	Proof        *passport.ProofPackage
-	Now          int64
+	Policy    passport.PolicyBundle
+	Challenge passport.Challenge
+	Proof     *passport.ProofPackage
+	Now       int64
 }
 
 // Decision is the result of a verification. Checks is filled in whether or
-// not the request was authorized, so callers can show what was examined.
+// not the request was authorized. Nullifier is the only agent-specific
+// value the verifier learns; it is stable for this verifier and unrelated
+// to what any other verifier sees.
 type Decision struct {
-	Authorized      bool
-	CertificateHash field.Element
-	Checks          []Check
+	Authorized bool
+	Nullifier  field.Element
+	Checks     []Check
 }
 
 // checkRun executes the checks in order and records their outcomes.
@@ -171,60 +167,27 @@ func (r *checkRun) do(key string, fn func() error) {
 // VerifyAccess runs every check in the order of Checks and consumes the
 // nonce only on success.
 func (v *Verifier) VerifyAccess(req AccessRequest) (Decision, error) {
-	cert := req.Presentation
-	pol := req.Policy.Policy
 	now := field.FromInt(req.Now)
 	var run checkRun
+	var nullifier field.Element
 
-	run.do("keyset-known", func() error {
-		if cert.CommitteeKeysetID != passport.CommitteeKeysetID {
-			return ErrUnknownKeyset
+	run.do("proof-unexpired", func() error {
+		expired, err := field.Less(req.Challenge.ProofExpiresAt, now)
+		if err != nil {
+			return err
+		}
+		if expired {
+			return ErrProofExpired
 		}
 		return nil
 	})
-	run.do("certificate-unexpired", func() error {
-		return lessIs(cert.ExpiresAt, now, ErrCertificateExpired)
-	})
-	run.do("proof-unexpired", func() error {
-		return lessIs(req.Challenge.ProofExpiresAt, now, ErrProofExpired)
-	})
 	run.do("policy-hash", func() error {
-		expected, err := passport.PolicyHash(pol)
+		expected, err := passport.PolicyHash(req.Policy.Policy)
 		if err != nil {
 			return err
 		}
 		if expected != req.Policy.PolicyHash {
 			return ErrPolicyHash
-		}
-		return nil
-	})
-	run.do("policy-match", func() error {
-		// Domain and epoch are checked here as well as in the circuit. The
-		// manifest relation is checked only in the circuit: the verifier
-		// knows the two commitments but not the manifests behind them, and
-		// the policy may permit them to differ.
-		if cert.TaskDomain != pol.RequestedTaskDomain || cert.AggregationEpoch != pol.RequestedAggregationEpoch {
-			return ErrPolicyMismatch
-		}
-		return nil
-	})
-	run.do("committee-quorum", func() error {
-		// The hash is taken from the presentation; the proof establishes
-		// that the presented fields (and the hidden receipt count) are its
-		// preimage.
-		msg, err := field.Bytes(cert.CertificateHash)
-		if err != nil {
-			return err
-		}
-		signers := map[string]struct{}{}
-		for _, sig := range cert.Signatures {
-			pub, ok := v.committeeKeys[sig.NodeID]
-			if ok && passport.VerifySignature(pub, msg, sig.Signature) {
-				signers[sig.NodeID] = struct{}{}
-			}
-		}
-		if len(signers) < passport.Quorum {
-			return ErrQuorum
 		}
 		return nil
 	})
@@ -249,10 +212,11 @@ func (v *Verifier) VerifyAccess(req AccessRequest) (Decision, error) {
 		if req.Proof == nil || req.Proof.Proof == nil {
 			return fmt.Errorf("%w: missing proof", ErrInvalidProof)
 		}
-		statement, err := passport.BuildStatement(cert, req.Policy, req.Challenge)
-		if err != nil {
-			return err
+		nullifier = req.Proof.Statement.Nullifier
+		if _, err := field.ToBig(nullifier); err != nil {
+			return fmt.Errorf("%w: bad nullifier", ErrInvalidProof)
 		}
+		statement := passport.BuildStatement(req.Policy, req.Challenge, v.keyset, nullifier)
 		return v.sys.Verify(req.Proof.Proof, statement)
 	})
 
@@ -261,17 +225,5 @@ func (v *Verifier) VerifyAccess(req AccessRequest) (Decision, error) {
 	}
 	delete(v.pending, key)
 	v.used[key] = struct{}{}
-	return Decision{Authorized: true, CertificateHash: cert.CertificateHash, Checks: run.checks}, nil
-}
-
-// lessIs returns failure if a < b as integers.
-func lessIs(a, b field.Element, failure error) error {
-	less, err := field.Less(a, b)
-	if err != nil {
-		return err
-	}
-	if less {
-		return failure
-	}
-	return nil
+	return Decision{Authorized: true, Nullifier: nullifier, Checks: run.checks}, nil
 }

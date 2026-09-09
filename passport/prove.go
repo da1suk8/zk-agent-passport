@@ -16,25 +16,24 @@ var (
 	ErrPolicyMismatch     = errors.New("certificate does not satisfy the requested policy")
 	ErrNotPassportHolder  = errors.New("agent secret does not open the certificate's passport commitment")
 	ErrScoreOpening       = errors.New("score and salt do not open the certificate's score commitment")
+	ErrCertificateExpired = errors.New("certificate expires before the proof would")
+	ErrKeysetMismatch     = errors.New("certificate was issued under a different committee keyset")
+	ErrInsufficientQuorum = errors.New("certificate lacks a quorum of signatures from the keyset")
 )
 
-// BuildStatement assembles the public inputs for one presented certificate,
-// policy, and challenge. Both the prover and the verifier compute it
-// independently.
-func BuildStatement(p CertificatePresentation, bundle PolicyBundle, ch Challenge) (zkp.PublicInputs, error) {
+// Nullifier is the only agent-specific public value of a proof. It is
+// stable for one verifier and unrelated across verifiers.
+func Nullifier(agentSecret, verifierID field.Element) (field.Element, error) {
+	return field.Hash(agentSecret, verifierID)
+}
+
+// BuildStatement assembles the public inputs for one policy, challenge,
+// keyset, and nullifier. Both the prover and the verifier compute it: the
+// verifier from its own policy, challenge, and keyset, plus the nullifier
+// the prover declares.
+func BuildStatement(bundle PolicyBundle, ch Challenge, keyset CommitteeKeyset, nullifier field.Element) zkp.PublicInputs {
 	pol := bundle.Policy
 	return zkp.PublicInputs{
-		CertificateHash:         p.CertificateHash,
-		CertificateID:           p.CertificateID,
-		PassportCommitment:      p.PassportCommitment,
-		AgentManifestCommitment: p.AgentManifestCommitment,
-		TaskDomain:              p.TaskDomain,
-		AggregationEpoch:        p.AggregationEpoch,
-		ScoreCommitment:         p.ScoreCommitment,
-		CertificateIssuedAt:     p.IssuedAt,
-		CertificateExpiresAt:    p.ExpiresAt,
-		CommitteeKeysetID:       p.CommitteeKeysetID,
-
 		PolicyHash:                  bundle.PolicyHash,
 		PolicyVersion:               pol.PolicyVersion,
 		RequiredThreshold:           pol.RequiredThreshold,
@@ -48,36 +47,41 @@ func BuildStatement(p CertificatePresentation, bundle PolicyBundle, ch Challenge
 		VerifierID:     ch.VerifierID,
 		Nonce:          ch.Nonce,
 		ProofExpiresAt: ch.ProofExpiresAt,
-	}, nil
+
+		Nullifier: nullifier,
+
+		CommitteeKeysetID: keyset.ID,
+		CommitteeKeys:     keyset.PublicKeys(),
+	}
 }
 
 // ProofRequest is everything the agent needs to prove access. The agent's
 // current manifest is Agent.Manifest; CertifiedManifest is the manifest the
-// certificate was issued for. A zero CertifiedManifest means the
-// certificate was issued for the agent's current manifest.
+// certificate was issued for (zero means the current one). Keyset is the
+// committee keyset the verifier trusts.
 type ProofRequest struct {
 	Agent             *Agent
 	CertifiedManifest Manifest
 	Issued            IssuedCertificate
 	Policy            PolicyBundle
 	Challenge         Challenge
+	Keyset            CommitteeKeyset
 }
 
-// ProofPackage is what the agent sends to the verifier: the redacted
-// certificate and the proof. The statement is included for transparency;
-// the verifier rebuilds it from its own inputs and never trusts this copy.
+// ProofPackage is what the agent sends to the verifier: the proof and the
+// statement it claims. The verifier rebuilds every part of the statement it
+// owns and takes only the nullifier from this copy.
 type ProofPackage struct {
-	Presentation CertificatePresentation
-	Proof        *zkp.Proof
-	Statement    zkp.PublicInputs
+	Proof     *zkp.Proof
+	Statement zkp.PublicInputs
 }
 
 // Prove generates a proof that the agent's certificate satisfies the policy.
 func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 	cert := req.Issued.Certificate
 	pol := req.Policy.Policy
-	// The agent must actually hold this certificate: its secret must open
-	// the passport commitment and its score opening must match.
+
+	// The agent must actually hold this certificate.
 	passportCommitment, err := field.Commit(req.Agent.AgentSecret, req.Agent.PassportSalt)
 	if err != nil {
 		return nil, err
@@ -92,25 +96,32 @@ func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 	if scoreCommitment != cert.ScoreCommitment {
 		return nil, ErrScoreOpening
 	}
-	below, err := field.Less(req.Issued.Score, pol.RequiredThreshold)
-	if err != nil {
-		return nil, err
-	}
-	if below {
+
+	// Policy conditions the circuit will enforce.
+	if below, err := field.Less(req.Issued.Score, pol.RequiredThreshold); err != nil || below {
+		if err != nil {
+			return nil, err
+		}
 		return nil, ErrThresholdNotMet
 	}
-	tooFew, err := field.Less(cert.ReceiptCount, pol.MinimumReceiptCount)
-	if err != nil {
-		return nil, err
-	}
-	if tooFew {
+	if tooFew, err := field.Less(cert.ReceiptCount, pol.MinimumReceiptCount); err != nil || tooFew {
+		if err != nil {
+			return nil, err
+		}
 		return nil, ErrReceiptCountNotMet
 	}
 	if cert.TaskDomain != pol.RequestedTaskDomain || cert.AggregationEpoch != pol.RequestedAggregationEpoch {
 		return nil, fmt.Errorf("%w: domain or epoch", ErrPolicyMismatch)
 	}
+	if outlived, err := field.Less(cert.ExpiresAt, req.Challenge.ProofExpiresAt); err != nil || outlived {
+		if err != nil {
+			return nil, err
+		}
+		return nil, ErrCertificateExpired
+	}
 
-	// Both manifest commitments must open to manifests the agent knows.
+	// Manifests: the certified one opens the certificate, the current one
+	// opens the policy's request, and the change between them is permitted.
 	if req.CertifiedManifest == (Manifest{}) {
 		req.CertifiedManifest = req.Agent.Manifest
 	}
@@ -129,23 +140,54 @@ func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 		return nil, fmt.Errorf("%w: %w", ErrPolicyMismatch, err)
 	}
 
-	presentation, err := cert.Present()
+	// Committee quorum from the verifier's keyset.
+	if cert.CommitteeKeysetID != req.Keyset.ID {
+		return nil, ErrKeysetMismatch
+	}
+	var signatures [zkp.Quorum][]byte
+	var signers [zkp.Quorum]int
+	seen := map[int]bool{}
+	found := 0
+	for _, sig := range cert.Signatures {
+		idx, ok := req.Keyset.Index(sig.NodeID)
+		if !ok || seen[idx] {
+			continue
+		}
+		seen[idx] = true
+		signatures[found], signers[found] = sig.Signature, idx
+		found++
+		if found == zkp.Quorum {
+			break
+		}
+	}
+	if found < zkp.Quorum {
+		return nil, ErrInsufficientQuorum
+	}
+
+	nullifier, err := Nullifier(req.Agent.AgentSecret, req.Challenge.VerifierID)
 	if err != nil {
 		return nil, err
 	}
-	statement, err := BuildStatement(presentation, req.Policy, req.Challenge)
-	if err != nil {
-		return nil, err
-	}
+	statement := BuildStatement(req.Policy, req.Challenge, req.Keyset, nullifier)
 	w := zkp.Witness{
-		PublicInputs:      statement,
-		Score:             req.Issued.Score,
-		ScoreSalt:         req.Issued.ScoreSalt,
-		AgentSecret:       req.Agent.AgentSecret,
-		PassportSalt:      req.Agent.PassportSalt,
-		ReceiptCount:      cert.ReceiptCount,
-		CertifiedManifest: ManifestFields(req.CertifiedManifest),
-		CurrentManifest:   ManifestFields(current),
+		PublicInputs:            statement,
+		CertificateID:           cert.CertificateID,
+		PassportCommitment:      cert.PassportCommitment,
+		AgentManifestCommitment: cert.AgentManifestCommitment,
+		TaskDomain:              cert.TaskDomain,
+		AggregationEpoch:        cert.AggregationEpoch,
+		ScoreCommitment:         cert.ScoreCommitment,
+		ReceiptCount:            cert.ReceiptCount,
+		CertificateIssuedAt:     cert.IssuedAt,
+		CertificateExpiresAt:    cert.ExpiresAt,
+		Signatures:              signatures,
+		SignerIndex:             signers,
+		Score:                   req.Issued.Score,
+		ScoreSalt:               req.Issued.ScoreSalt,
+		AgentSecret:             req.Agent.AgentSecret,
+		PassportSalt:            req.Agent.PassportSalt,
+		CertifiedManifest:       ManifestFields(req.CertifiedManifest),
+		CurrentManifest:         ManifestFields(current),
 	}
 	certifiedValues, currentValues := manifestValues(req.CertifiedManifest), manifestValues(current)
 	for i := 0; i < ManifestFieldCount; i++ {
@@ -163,5 +205,5 @@ func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prove: %w", err)
 	}
-	return &ProofPackage{Presentation: presentation, Proof: proof, Statement: statement}, nil
+	return &ProofPackage{Proof: proof, Statement: statement}, nil
 }

@@ -62,9 +62,7 @@ func TestAuthorizesValidPassportWithoutDisclosingScore(t *testing.T) {
 	if strings.Contains(string(raw), w.Issued.Score) {
 		t.Fatal("proof bytes leak the score")
 	}
-	for _, v := range []string{
-		pkg.Statement.CertificateHash, pkg.Statement.PolicyHash, pkg.Statement.ScoreCommitment,
-	} {
+	for _, v := range []string{pkg.Statement.PolicyHash, pkg.Statement.Nullifier} {
 		if v == w.Issued.Score {
 			t.Fatal("statement leaks the score")
 		}
@@ -194,48 +192,117 @@ func TestCannotProveAgainstForeignManifestPolicy(t *testing.T) {
 	}
 }
 
-func TestVerifierRejectsExpiredCertificate(t *testing.T) {
+func TestVerifierRejectsExpiredProof(t *testing.T) {
 	w, ch, pkg := proven(t)
-	if _, err := w.AccessAt(ch, pkg, Now+901); !errors.Is(err, verifier.ErrCertificateExpired) {
-		t.Fatalf("expected expiry error, got %v", err)
+	if _, err := w.AccessAt(ch, pkg, Now+301); !errors.Is(err, verifier.ErrProofExpired) {
+		t.Fatalf("expected proof expiry error, got %v", err)
 	}
 }
 
-func TestVerifierRejectsProofMixedWithAnotherCertificate(t *testing.T) {
+func TestVerifierRejectsTamperedNullifier(t *testing.T) {
 	w, ch, pkg := proven(t)
-	mixed := w.Issued.Certificate
-	mixed.CertificateID = "777"
-	// Re-sign so that only the proof binding, not the signature check, rejects it.
-	hash, err := passport.CertificateHash(mixed.CertificatePayload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	msg, _ := fieldBytes(hash)
-	mixed.Signatures = nil
-	for _, node := range w.Committee[:passport.Quorum] {
-		mixed.Signatures = append(mixed.Signatures, passport.CommitteeSignature{NodeID: node.NodeID, Signature: node.Sign(msg)})
-	}
-	presentation, err := mixed.Present()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = w.Verifier.VerifyAccess(verifier.AccessRequest{
-		Presentation: presentation, Policy: w.Policy, Challenge: ch, Proof: pkg, Now: Now,
-	})
-	if !errors.Is(err, verifier.ErrInvalidProof) {
-		t.Fatalf("expected invalid proof, got %v", err)
+	tampered := *pkg
+	tampered.Statement.Nullifier = "7"
+	if _, err := w.Access(ch, &tampered); !errors.Is(err, verifier.ErrInvalidProof) {
+		t.Fatalf("expected invalid proof for a tampered nullifier, got %v", err)
 	}
 }
 
-func TestVerifierRejectsPresentationWithForgedField(t *testing.T) {
-	w, ch, pkg := proven(t)
-	forged := pkg.Presentation
-	forged.ExpiresAt = field.FromInt(Now + 100_000)
-	_, err := w.Verifier.VerifyAccess(verifier.AccessRequest{
-		Presentation: forged, Policy: w.Policy, Challenge: ch, Proof: pkg, Now: Now,
-	})
-	if !errors.Is(err, verifier.ErrInvalidProof) {
-		t.Fatalf("expected invalid proof for a forged presentation field, got %v", err)
+func TestCannotProveWithSingleCommitteeSignature(t *testing.T) {
+	w := newWorld(t)
+	single := w.Issued
+	single.Certificate.Signatures = single.Certificate.Signatures[:1]
+	ch, _ := w.NewChallenge()
+	if _, err := w.ProveWith(ch, w.Policy, single); !errors.Is(err, passport.ErrInsufficientQuorum) {
+		t.Fatalf("expected quorum error, got %v", err)
+	}
+}
+
+func TestCannotProveWithSignatureFromOutsideTheKeyset(t *testing.T) {
+	w := newWorld(t)
+	outsider, err := passport.NewCommitteeNode("committee-x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, err := passport.CertificateHash(w.Issued.Certificate.CertificatePayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := outsider.Sign(hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := w.Issued
+	forged.Certificate.Signatures = []passport.CommitteeSignature{
+		forged.Certificate.Signatures[0],
+		{NodeID: "committee-x", Signature: sig},
+	}
+	ch, _ := w.NewChallenge()
+	if _, err := w.ProveWith(ch, w.Policy, forged); !errors.Is(err, passport.ErrInsufficientQuorum) {
+		t.Fatalf("expected quorum error for an outsider signature, got %v", err)
+	}
+}
+
+func TestCannotProveBeyondCertificateExpiry(t *testing.T) {
+	w := newWorld(t)
+	late := passport.Challenge{VerifierID: field.FromText(VerifierName), Nonce: "5", ProofExpiresAt: field.FromInt(Now + 901)}
+	if _, err := w.Prove(late); !errors.Is(err, passport.ErrCertificateExpired) {
+		t.Fatalf("expected certificate expiry error, got %v", err)
+	}
+}
+
+func TestTwoServicesCannotLinkTheSameAgent(t *testing.T) {
+	w, chA, pkgA := proven(t)
+	if _, err := w.Access(chA, pkgA); err != nil {
+		t.Fatal(err)
+	}
+	other := verifier.New(sys, w.Keyset, "travel-insurance-service")
+	chB, err := other.IssueChallenge(Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkgB, err := w.Prove(chB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decisionB, err := other.VerifyAccess(verifier.AccessRequest{Policy: w.Policy, Challenge: chB, Proof: pkgB, Now: Now})
+	if err != nil || !decisionB.Authorized {
+		t.Fatalf("second service should authorize: %v", err)
+	}
+	if pkgA.Statement.Nullifier == pkgB.Statement.Nullifier {
+		t.Fatal("nullifiers should differ across services")
+	}
+	// Nothing agent-specific other than the nullifier is public. (The score
+	// itself is too short to search for; its commitment stands in for it.)
+	rawA, _ := json.Marshal(pkgA.Statement)
+	for _, secret := range []string{
+		w.Issued.Certificate.PassportCommitment, w.Issued.Certificate.CertificateID,
+		w.Issued.Certificate.ScoreCommitment, w.Agent.AgentSecret, w.Issued.ScoreSalt,
+	} {
+		if strings.Contains(string(rawA), secret) {
+			t.Fatalf("statement exposes %s…", secret[:8])
+		}
+	}
+	// The same service sees the same nullifier again.
+	chA2, _ := w.NewChallenge()
+	pkgA2, err := w.Prove(chA2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pkgA2.Statement.Nullifier != pkgA.Statement.Nullifier {
+		t.Fatal("nullifier should be stable for one service")
+	}
+}
+
+func TestTwoPermittedManifestUpdates(t *testing.T) {
+	w := withManifest(t, func(m *passport.Manifest) { m.ModelID = "gpt-demo-v2"; m.SystemPromptHash = "travel-booking-v2" }, nil)
+	ch, _ := w.NewChallenge()
+	pkg, err := w.Prove(ch)
+	if err != nil {
+		t.Fatalf("two permitted updates should prove: %v", err)
+	}
+	if _, err := w.Access(ch, pkg); err != nil {
+		t.Fatalf("two permitted updates should authorize: %v", err)
 	}
 }
 
@@ -264,17 +331,6 @@ func TestCannotProveWithSomeoneElsesSecret(t *testing.T) {
 	})
 	if !errors.Is(err, passport.ErrNotPassportHolder) {
 		t.Fatalf("expected not-holder error, got %v", err)
-	}
-}
-
-func TestPresentationWithholdsReceiptCount(t *testing.T) {
-	_, _, pkg := proven(t)
-	raw, err := json.Marshal(pkg.Presentation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), "receiptCount") {
-		t.Fatal("presentation exposes the receipt count")
 	}
 }
 
@@ -331,17 +387,5 @@ func TestVerifierRejectsReplayedNonce(t *testing.T) {
 	}
 	if _, err := w.Access(ch, pkg); !errors.Is(err, verifier.ErrNonceConsumed) {
 		t.Fatalf("expected consumed nonce, got %v", err)
-	}
-}
-
-func TestVerifierRejectsSingleCommitteeSignature(t *testing.T) {
-	w, ch, pkg := proven(t)
-	single := pkg.Presentation
-	single.Signatures = single.Signatures[:1]
-	_, err := w.Verifier.VerifyAccess(verifier.AccessRequest{
-		Presentation: single, Policy: w.Policy, Challenge: ch, Proof: pkg, Now: Now,
-	})
-	if !errors.Is(err, verifier.ErrQuorum) {
-		t.Fatalf("expected quorum error, got %v", err)
 	}
 }

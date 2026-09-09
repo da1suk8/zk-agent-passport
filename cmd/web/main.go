@@ -48,7 +48,7 @@ var checkLabels = map[string]string{
 	"committee-quorum":      "異なる 2 ノードの署名が有効",
 	"nonce-issued":          "nonce がこの Service の発行したもの",
 	"nonce-unused":          "nonce が未使用",
-	"proof-valid":           "ZK Proof が有効（持ち主・score ≥ 閾値・receiptCount ≥ 最低件数・Manifest の変更が許可範囲内）",
+	"proof-valid":           "ZK Proof が有効（Committee 2-of-3 署名・持ち主・score ≥ 閾値・receiptCount ≥ 最低件数・Certificate 期限内・Manifest の変更が許可範囲内）",
 }
 
 func label(key string) string {
@@ -360,8 +360,8 @@ func (s *server) execute(req RunRequest) (*RunResponse, error) {
 		Lines: []KV{
 			{Key: "証明時間", Value: proveTook},
 			{Key: "Proof サイズ", Value: fmt.Sprintf("%d bytes", len(raw))},
-			{Key: "回路が示すこと", Value: "証明書とPolicyのハッシュ一致 / 封筒の中身を知っている / 持ち主である / 分野・期間の一致 / Manifest の変更が許可範囲内 / score ≥ 閾値 / receiptCount ≥ 最低件数"},
-			{Key: "Service へ渡すもの", Value: "receiptCount を除いた証明書（hash と署名つき）+ Proof"},
+			{Key: "回路が示すこと", Value: "Committee 2-of-3 署名 / Policy のハッシュ一致 / 封筒の中身を知っている / 持ち主である / nullifier の導出 / 分野・期間の一致 / Manifest の変更が許可範囲内 / score ≥ 閾値 / receiptCount ≥ 最低件数 / Certificate が Proof より長く有効"},
+			{Key: "Service へ渡すもの", Value: "Proof + 公開入力（Policy・nonce・nullifier・keyset）。証明書は渡さない"},
 		},
 		Status: "ok",
 	})
@@ -405,7 +405,7 @@ func verifyStep(decision verifier.Decision, err error, subtitle string) Step {
 	}
 	step.Lines = []KV{
 		{Key: "結果", Value: "authorized"},
-		{Key: "certificateHash", Value: short(decision.CertificateHash, 14)},
+		{Key: "nullifier（この Service 専用の識別子）", Value: short(decision.Nullifier, 14)},
 		{Key: "nonce", Value: "消費済みとして記録"},
 	}
 	return step
@@ -421,19 +421,23 @@ func panels(world *demo.World, authorized bool) (visible, hidden []KV) {
 	}
 	visible = []KV{
 		{Key: "判定", Value: result},
-		{Key: "分野", Value: "Travel Booking (" + cert.TaskDomain + ")"},
-		{Key: "Certificate の Manifest", Value: short(cert.AgentManifestCommitment, 14)},
-		{Key: "評価期間", Value: cert.AggregationEpoch},
+		{Key: "分野（Policy）", Value: "Travel Booking (" + pol.RequestedTaskDomain + ")"},
+		{Key: "評価期間（Policy）", Value: pol.RequestedAggregationEpoch},
 		{Key: "閾値の条件", Value: "score ≥ " + pol.RequiredThreshold},
 		{Key: "件数の条件", Value: "receiptCount ≥ " + pol.MinimumReceiptCount + "（件数自体は非開示）"},
-		{Key: "現在の Manifest", Value: short(pol.RequestedManifestCommitment, 14) + manifestDelta(world)},
+		{Key: "要求した Manifest", Value: short(pol.RequestedManifestCommitment, 14) + manifestDelta(world)},
 		{Key: "変更ポリシー", Value: describeVersionPolicy(*world.Options.VersionPolicy)},
-		{Key: "Passport commitment", Value: short(cert.PassportCommitment, 14)},
-		{Key: "scoreCommitment（封筒）", Value: short(cert.ScoreCommitment, 14)},
+		{Key: "Committee keyset", Value: world.Keyset.ID + "（全 Agent 共通）"},
+		{Key: "nullifier", Value: "この Service 専用。他の Service とは無関係"},
 	}
 	hidden = []KV{
 		{Key: "合計 score", Value: world.Issued.Score, Secret: true},
 		{Key: "Receipt 件数", Value: cert.ReceiptCount, Secret: true},
+		{Key: "Passport commitment", Value: short(cert.PassportCommitment, 14), Secret: true},
+		{Key: "Certificate の Manifest", Value: short(cert.AgentManifestCommitment, 14), Secret: true},
+		{Key: "certificateId", Value: short(cert.CertificateID, 14), Secret: true},
+		{Key: "scoreCommitment（封筒）", Value: short(cert.ScoreCommitment, 14), Secret: true},
+		{Key: "Certificate の期限", Value: cert.ExpiresAt, Secret: true},
 	}
 	for i, rc := range world.Receipts {
 		hidden = append(hidden, KV{Key: fmt.Sprintf("Provider %s の評価", providerLabel(i)), Value: fmt.Sprint(rc.Rating), Secret: true})
