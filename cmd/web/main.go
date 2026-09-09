@@ -74,6 +74,8 @@ func main() {
 	mux.HandleFunc("GET /api/defaults", s.defaults)
 	mux.HandleFunc("POST /api/run", s.run)
 	mux.HandleFunc("POST /api/replay", s.replay)
+	mux.HandleFunc("POST /api/attack", s.attack)
+	mux.HandleFunc("POST /api/other-service", s.otherService)
 
 	httpServer := &http.Server{Addr: *addr, Handler: mux}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -213,6 +215,150 @@ func (s *server) replay(w http.ResponseWriter, _ *http.Request) {
 	}
 	resp.Visible, resp.Hidden = panels(last.world, decision.Authorized)
 	writeJSON(w, resp)
+}
+
+// AttackRequest names one malicious submission to the gateway.
+type AttackRequest struct {
+	Kind string `json:"kind"` // forged | unregistered | duplicate | same-issuer | expired
+}
+
+// attack submits a bad receipt to the gateway of the last run and reports
+// which check stopped it. The gateway's state is untouched by a rejection,
+// so attacks can be repeated in any order.
+func (s *server) attack(w http.ResponseWriter, r *http.Request) {
+	var req AttackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	world, err := s.currentWorld()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	receipt, title, err := craftAttack(world, req.Kind)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_, checks, verr := world.Gateway.ValidateReceiptReport(receipt, demo.AggregationEpoch, demo.Now)
+	step := Step{ID: "attack", From: "providers", To: "gateway", Title: "攻撃: " + title, Status: "rejected"}
+	step.Lines = []KV{{Key: "提出された Receipt", Value: fmt.Sprintf("issuer=%s rating=%d id=%s sig=%s", receipt.IssuerID, receipt.Rating, receipt.ReceiptID, short(receipt.Signature, 10))}}
+	for _, c := range checks {
+		check := Check{Name: label(c.Key), Status: string(c.Status)}
+		if c.Err != nil {
+			check.Detail = c.Err.Error()
+		}
+		step.Checks = append(step.Checks, check)
+	}
+	if verr != nil {
+		step.Error = "Gateway が拒否: " + verr.Error()
+	} else {
+		step.Status = "ok"
+		step.Error = "Gateway は受理した（想定外）"
+	}
+	writeJSON(w, map[string]any{"step": step, "outcome": step.Status})
+}
+
+// craftAttack builds a malicious receipt against the demo world.
+func craftAttack(world *demo.World, kind string) (passport.Receipt, string, error) {
+	switch kind {
+	case "forged":
+		forged := world.Receipts[0]
+		forged.Rating = 1
+		forged.ReceiptID = "receipt-forged"
+		return forged, "Provider A の Receipt の評価を書き換えて再提出（署名は元のまま）", nil
+	case "unregistered":
+		stranger, err := passport.NewIdentity("unregistered-provider")
+		if err != nil {
+			return passport.Receipt{}, "", err
+		}
+		r, err := passport.IssueReceipt(stranger, world.Agent, passport.ReceiptRequest{
+			ReceiptID: "receipt-stranger", TaskDomain: demo.TaskDomain, Rating: 5, IssuedAt: demo.Now, ExpiresAt: demo.Now + 3600,
+		})
+		return r, "Registry に無い Provider が正しく署名した Receipt を提出", err
+	case "duplicate":
+		return world.Receipts[0], "Provider A の本物の Receipt をもう一度提出（二重集計）", nil
+	case "same-issuer":
+		r, err := passport.IssueReceipt(world.Issuers[0], world.Agent, passport.ReceiptRequest{
+			ReceiptID: "receipt-1b", TaskDomain: demo.TaskDomain, Rating: 5, IssuedAt: demo.Now, ExpiresAt: demo.Now + 3600,
+		})
+		return r, "Provider A が同じ期間に 2 件目の Receipt を発行（Review Farming）", err
+	case "expired":
+		r, err := passport.IssueReceipt(world.Issuers[1], world.Agent, passport.ReceiptRequest{
+			ReceiptID: "receipt-old", TaskDomain: demo.TaskDomain, Rating: 5, IssuedAt: demo.Now - 7200, ExpiresAt: demo.Now - 3600,
+		})
+		return r, "Provider B が期限切れの Receipt を提出", err
+	default:
+		return passport.Receipt{}, "", fmt.Errorf("unknown attack %q", kind)
+	}
+}
+
+// otherService proves the same certificate to a second service and shows
+// what that service sees: the same passport commitment, which is what
+// makes the two visits linkable.
+func (s *server) otherService(w http.ResponseWriter, _ *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	world, err := s.currentWorld()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	const otherName = "travel-insurance-service"
+	var committee []passport.PublicIdentity
+	for _, node := range world.Committee {
+		committee = append(committee, node.Public())
+	}
+	other := verifier.New(s.sys, committee, otherName)
+	ch, err := other.IssueChallenge(demo.Now)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	pkg, err := world.Prove(ch)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	decision, verr := other.VerifyAccess(verifier.AccessRequest{
+		Presentation: pkg.Presentation, Policy: world.Policy, Challenge: ch, Proof: pkg, Now: demo.Now,
+	})
+	step := Step{ID: "link", From: "agent", To: "service", Title: "別の Service（" + otherName + "）に同じ Certificate で証明", Status: "ok"}
+	if verr != nil {
+		step.Status = "rejected"
+		step.Error = verr.Error()
+	}
+	passportA := world.Issued.Certificate.PassportCommitment
+	passportB := pkg.Presentation.PassportCommitment
+	step.Lines = []KV{
+		{Key: "判定", Value: map[bool]string{true: "authorized", false: "rejected"}[decision.Authorized]},
+		{Key: "nonce（Service B 発行）", Value: short(ch.Nonce, 14)},
+		{Key: "Service A が見た passport", Value: short(passportA, 14)},
+		{Key: "Service B が見た passport", Value: short(passportB, 14)},
+	}
+	writeJSON(w, map[string]any{
+		"step":     step,
+		"outcome":  step.Status,
+		"linkable": passportA == passportB,
+		"note":     "2 つの Service が passportCommitment を突き合わせると同一 Agent だと分かる。現状の Limitation。次の一手は Service ごとの nullifier と Committee 署名の回路内検証。",
+	})
+}
+
+// currentWorld returns the world of the last run, provisioning a default
+// one if the page has not run yet.
+func (s *server) currentWorld() (*demo.World, error) {
+	if s.last != nil && s.last.world != nil {
+		return s.last.world, nil
+	}
+	world, err := demo.NewWorld(s.sys)
+	if err != nil {
+		return nil, err
+	}
+	s.last = &lastRun{world: world}
+	return world, nil
 }
 
 func (s *server) execute(req RunRequest) (*RunResponse, error) {

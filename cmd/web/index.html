@@ -69,6 +69,14 @@
   body:not(.reveal) .secret .v { color: transparent; background: #d1d5db; user-select: none; }
   body:not(.reveal) .secret .v::after { content: "隠されている"; color: var(--muted); }
   .note { font-size: 13px; color: var(--muted); }
+  .extras { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px; margin-top: 12px; }
+  .extras .title { font-weight: 700; margin-right: 4px; }
+  .extras button.attack { border-color: #fca5a5; color: var(--bad); }
+  .extras button.link { border-color: #c4b5fd; color: var(--secret); }
+  .linkbox { border: 2px solid var(--bad); background: var(--bad-bg); border-radius: 12px; padding: 12px 16px; }
+  .linkbox h2 { margin: 0 0 6px; font-size: 15px; color: var(--bad); }
+  .linkbox .kv { grid-template-columns: 170px 1fr; }
+  .linkbox .same { color: var(--bad); font-weight: 700; }
   @keyframes pop { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 </style>
 </head>
@@ -125,6 +133,16 @@
       <div class="actor" data-actor="service"><div class="name">Service</div><div class="role">Policy と検証</div></div>
     </section>
     <p class="note">各ステップは本物の処理です（Ed25519 署名、Poseidon2 コミットメント、加算的秘密分散、Groth16 証明）。ハッシュは先頭だけ表示しています。</p>
+    <section class="extras">
+      <span class="title">攻撃者モード（Gateway へ提出）</span>
+      <button class="attack" data-attack="forged">評価を書き換えた Receipt</button>
+      <button class="attack" data-attack="unregistered">未登録 Provider の Receipt</button>
+      <button class="attack" data-attack="duplicate">同じ Receipt を再提出</button>
+      <button class="attack" data-attack="same-issuer">同一 Provider の 2 件目</button>
+      <button class="attack" data-attack="expired">期限切れ Receipt</button>
+      <span class="title" style="margin-left:auto">限界を見る</span>
+      <button class="link" id="otherService">別の Service で実行</button>
+    </section>
     <section class="steps" id="steps"></section>
   </div>
 
@@ -133,6 +151,11 @@
     <div class="panel visible">
       <h2>Service が見るもの</h2>
       <div class="kv" id="visible"></div>
+    </div>
+    <div class="linkbox" id="linkbox" hidden>
+      <h2>リンク可能性（現状の限界）</h2>
+      <div class="kv" id="linkrows"></div>
+      <p class="note" id="linknote"></p>
     </div>
     <div class="panel hidden-panel">
       <h2>Service に見えないもの</h2>
@@ -198,6 +221,7 @@ function collect() {
 
 function clearBoard() {
   $("steps").innerHTML = "";
+  $("linkbox").hidden = true;
   document.querySelectorAll(".actor").forEach((a) => a.classList.remove("active", "rejected", "done"));
   document.querySelectorAll(".arrow").forEach((a) => a.classList.remove("active"));
   setVerdict("idle", "再生中…");
@@ -313,6 +337,44 @@ async function replay() {
   }
 }
 
+async function attack(kind) {
+  document.querySelectorAll(".actor").forEach((a) => a.classList.remove("active", "rejected"));
+  try {
+    const res = await fetch("/api/attack", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    highlight(data.step);
+    renderStep(data.step);
+  } catch (e) {
+    setVerdict("rejected", "エラー", e.message);
+  }
+}
+
+async function otherService() {
+  document.querySelectorAll(".actor").forEach((a) => a.classList.remove("active", "rejected"));
+  try {
+    const res = await fetch("/api/other-service", { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    highlight(data.step);
+    renderStep(data.step);
+    const box = $("linkbox");
+    box.hidden = false;
+    const rows = data.step.lines.filter((l) => l.key.includes("passport"));
+    kvRows($("linkrows"), rows);
+    if (data.linkable) {
+      $("linkrows").querySelectorAll(".v").forEach((v) => v.classList.add("same"));
+      $("linknote").textContent = "同じ値。" + data.note;
+    } else {
+      $("linknote").textContent = data.note;
+    }
+  } catch (e) {
+    setVerdict("rejected", "エラー", e.message);
+  }
+}
+
+document.querySelectorAll("button.attack").forEach((b) => b.addEventListener("click", () => attack(b.dataset.attack)));
+$("otherService").addEventListener("click", otherService);
 $("run").addEventListener("click", run);
 $("replay").addEventListener("click", replay);
 $("reset").addEventListener("click", resetControls);
