@@ -18,6 +18,31 @@ var (
 	ErrIssuerAlreadyContributed = errors.New("issuer already contributed to this passport, domain, and epoch")
 )
 
+// GatewayChecks names the gateway's checks, in the order they run. User
+// interfaces may map these keys to labels; the order is owned here.
+var GatewayChecks = []string{
+	"issuer-registered",
+	"receipt-signature",
+	"receipt-unexpired",
+	"rating-range",
+	"receipt-unused",
+	"issuer-once-per-epoch",
+}
+
+// ValidatedReceipt is a receipt that passed every gateway check for a given
+// aggregation epoch. Only the gateway can create one, so the committee can
+// require it and never aggregate an unchecked receipt.
+type ValidatedReceipt struct {
+	receipt Receipt
+	epoch   field.Element
+}
+
+// Receipt returns the underlying receipt.
+func (v ValidatedReceipt) Receipt() Receipt { return v.receipt }
+
+// AggregationEpoch returns the epoch the receipt was validated for.
+func (v ValidatedReceipt) AggregationEpoch() field.Element { return v.epoch }
+
 // IssuerRegistry is the fixed set of providers allowed to issue receipts.
 type IssuerRegistry map[string]ed25519.PublicKey
 
@@ -48,38 +73,39 @@ func NewInputGateway(registry IssuerRegistry) *InputGateway {
 	}
 }
 
-// ValidateReceipt applies every gateway check and records the receipt as
-// consumed. A receipt that fails any check leaves no state behind.
-func (g *InputGateway) ValidateReceipt(r Receipt, aggregationEpoch field.Element, now int64) error {
+// ValidateReceipt applies every gateway check, records the receipt as
+// consumed, and returns it as validated for the epoch. A receipt that fails
+// any check leaves no state behind.
+func (g *InputGateway) ValidateReceipt(r Receipt, aggregationEpoch field.Element, now int64) (ValidatedReceipt, error) {
 	pub, ok := g.registry[r.IssuerID]
 	if !ok {
-		return fmt.Errorf("%w: %s", ErrIssuerNotRegistered, r.IssuerID)
+		return ValidatedReceipt{}, fmt.Errorf("%w: %s", ErrIssuerNotRegistered, r.IssuerID)
 	}
 	msg, err := r.signable()
 	if err != nil {
-		return err
+		return ValidatedReceipt{}, err
 	}
 	if !VerifySignature(pub, msg, r.Signature) {
-		return ErrReceiptSignature
+		return ValidatedReceipt{}, ErrReceiptSignature
 	}
 	if r.ExpiresAt < now {
-		return ErrReceiptExpired
+		return ValidatedReceipt{}, ErrReceiptExpired
 	}
 	if r.Rating < RatingMin || r.Rating > RatingMax {
-		return fmt.Errorf("%w: %d", ErrRatingRange, r.Rating)
+		return ValidatedReceipt{}, fmt.Errorf("%w: %d", ErrRatingRange, r.Rating)
 	}
 	if _, used := g.usedReceiptIDs[r.ReceiptID]; used {
-		return fmt.Errorf("%w: %s", ErrReceiptReused, r.ReceiptID)
+		return ValidatedReceipt{}, fmt.Errorf("%w: %s", ErrReceiptReused, r.ReceiptID)
 	}
 	key := strings.Join([]string{
 		r.IssuerID, r.PassportCommitment, r.AgentManifestCommitment, r.TaskDomain, aggregationEpoch,
 	}, ":")
 	if _, seen := g.issuerEpochKeys[key]; seen {
-		return ErrIssuerAlreadyContributed
+		return ValidatedReceipt{}, ErrIssuerAlreadyContributed
 	}
 	g.usedReceiptIDs[r.ReceiptID] = struct{}{}
 	g.issuerEpochKeys[key] = struct{}{}
-	return nil
+	return ValidatedReceipt{receipt: r, epoch: aggregationEpoch}, nil
 }
 
 // ShareRating splits a rating into three additive shares over the field:

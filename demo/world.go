@@ -152,13 +152,16 @@ func NewWorldWith(sys *zkp.System, opts Options) (*World, error) {
 	}
 
 	w.Gateway = passport.NewInputGateway(passport.NewIssuerRegistry(w.Issuers...))
+	var validated []passport.ValidatedReceipt
 	for _, r := range w.Receipts {
-		if err := w.Gateway.ValidateReceipt(r, AggregationEpoch, Now); err != nil {
+		v, err := w.Gateway.ValidateReceipt(r, AggregationEpoch, Now)
+		if err != nil {
 			return nil, err
 		}
+		validated = append(validated, v)
 	}
 	issued, err := passport.IssueScoreCertificate(w.Committee, passport.AggregationRequest{
-		Receipts:         w.Receipts,
+		Receipts:         validated,
 		AggregationEpoch: AggregationEpoch,
 		IssuedAt:         Now,
 		ExpiresAt:        Now + 900,
@@ -191,7 +194,7 @@ func NewWorldWith(sys *zkp.System, opts Options) (*World, error) {
 	for _, node := range w.Committee {
 		committeePublic = append(committeePublic, node.Public())
 	}
-	w.Verifier = verifier.New(sys, committeePublic)
+	w.Verifier = verifier.New(sys, committeePublic, VerifierName)
 	return w, nil
 }
 
@@ -203,9 +206,9 @@ func (w *World) BatchKey() string {
 	return passport.BatchKey(c.PassportCommitment, c.AgentManifestCommitment, c.TaskDomain, c.AggregationEpoch)
 }
 
-// NewChallenge issues a challenge from the demo service.
+// NewChallenge asks the demo service to issue a challenge.
 func (w *World) NewChallenge() (passport.Challenge, error) {
-	return passport.NewChallenge(VerifierName, Now, passport.DefaultChallengeTTL)
+	return w.Verifier.IssueChallenge(Now)
 }
 
 // Prove generates the agent's proof for the world's certificate and policy.

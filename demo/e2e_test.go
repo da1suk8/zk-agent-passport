@@ -86,7 +86,7 @@ func TestGatewayRejectsForgedReceipt(t *testing.T) {
 	forged := w.Receipts[0]
 	forged.Rating = 1
 	forged.ReceiptID = "forged"
-	err := w.Gateway.ValidateReceipt(forged, AggregationEpoch, Now)
+	_, err := w.Gateway.ValidateReceipt(forged, AggregationEpoch, Now)
 	if !errors.Is(err, passport.ErrReceiptSignature) {
 		t.Fatalf("expected signature error, got %v", err)
 	}
@@ -104,14 +104,14 @@ func TestGatewayRejectsUnregisteredIssuer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.Gateway.ValidateReceipt(r, AggregationEpoch, Now); !errors.Is(err, passport.ErrIssuerNotRegistered) {
+	if _, err := w.Gateway.ValidateReceipt(r, AggregationEpoch, Now); !errors.Is(err, passport.ErrIssuerNotRegistered) {
 		t.Fatalf("expected registry error, got %v", err)
 	}
 }
 
 func TestGatewayRejectsDuplicateReceiptAndSecondReceiptFromSameIssuer(t *testing.T) {
 	w := newWorld(t)
-	if err := w.Gateway.ValidateReceipt(w.Receipts[0], AggregationEpoch, Now); !errors.Is(err, passport.ErrReceiptReused) {
+	if _, err := w.Gateway.ValidateReceipt(w.Receipts[0], AggregationEpoch, Now); !errors.Is(err, passport.ErrReceiptReused) {
 		t.Fatalf("expected reuse error, got %v", err)
 	}
 	second, err := passport.IssueReceipt(w.Issuers[0], w.Agent, passport.ReceiptRequest{
@@ -120,7 +120,7 @@ func TestGatewayRejectsDuplicateReceiptAndSecondReceiptFromSameIssuer(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.Gateway.ValidateReceipt(second, AggregationEpoch, Now); !errors.Is(err, passport.ErrIssuerAlreadyContributed) {
+	if _, err := w.Gateway.ValidateReceipt(second, AggregationEpoch, Now); !errors.Is(err, passport.ErrIssuerAlreadyContributed) {
 		t.Fatalf("expected issuer-epoch error, got %v", err)
 	}
 }
@@ -229,6 +229,41 @@ func TestVerifierRejectsProofForAnotherChallenge(t *testing.T) {
 	}
 	if _, err := w.Access(other, pkg); !errors.Is(err, verifier.ErrInvalidProof) {
 		t.Fatalf("expected invalid proof for a different nonce, got %v", err)
+	}
+}
+
+func TestVerifierRejectsChallengeItDidNotIssue(t *testing.T) {
+	w := newWorld(t)
+	forged, err := passport.NewChallenge(VerifierName, Now, passport.DefaultChallengeTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := w.Prove(forged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, err := w.Access(forged, pkg)
+	if !errors.Is(err, verifier.ErrUnknownNonce) {
+		t.Fatalf("expected unknown nonce, got %v", err)
+	}
+	if len(decision.Checks) != len(verifier.Checks) {
+		t.Fatalf("expected %d reported checks, got %d", len(verifier.Checks), len(decision.Checks))
+	}
+}
+
+func TestVerifierReportsEveryCheck(t *testing.T) {
+	w, ch, pkg := proven(t)
+	decision, err := w.Access(ch, pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decision.Checks) != len(verifier.Checks) {
+		t.Fatalf("expected %d checks, got %d", len(verifier.Checks), len(decision.Checks))
+	}
+	for i, c := range decision.Checks {
+		if c.Key != verifier.Checks[i] || c.Status != verifier.CheckOK {
+			t.Fatalf("check %d = %+v, want %s ok", i, c, verifier.Checks[i])
+		}
 	}
 }
 

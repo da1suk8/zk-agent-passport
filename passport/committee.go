@@ -118,9 +118,10 @@ func CertificateHash(p CertificatePayload) (field.Element, error) {
 	)
 }
 
-// AggregationRequest describes one certificate issuance.
+// AggregationRequest describes one certificate issuance. Only receipts the
+// gateway validated for the same epoch can be aggregated.
 type AggregationRequest struct {
-	Receipts         []Receipt
+	Receipts         []ValidatedReceipt
 	AggregationEpoch field.Element
 	IssuedAt         int64
 	ExpiresAt        int64
@@ -137,8 +138,12 @@ func IssueScoreCertificate(committee []*CommitteeNode, req AggregationRequest) (
 	if len(req.Receipts) == 0 {
 		return IssuedCertificate{}, ErrEmptyBatch
 	}
-	first := req.Receipts[0]
-	for _, r := range req.Receipts[1:] {
+	first := req.Receipts[0].Receipt()
+	for _, v := range req.Receipts {
+		r := v.Receipt()
+		if v.AggregationEpoch() != req.AggregationEpoch {
+			return IssuedCertificate{}, fmt.Errorf("%w: %s validated for epoch %s", ErrBatchMismatch, r.ReceiptID, v.AggregationEpoch())
+		}
 		if r.PassportCommitment != first.PassportCommitment ||
 			r.AgentManifestCommitment != first.AgentManifestCommitment ||
 			r.TaskDomain != first.TaskDomain {
@@ -148,8 +153,8 @@ func IssueScoreCertificate(committee []*CommitteeNode, req AggregationRequest) (
 	batchKey := BatchKey(first.PassportCommitment, first.AgentManifestCommitment, first.TaskDomain, req.AggregationEpoch)
 
 	// Secret-share every rating; node i only ever receives share i.
-	for _, r := range req.Receipts {
-		shares, err := ShareRating(r.Rating)
+	for _, v := range req.Receipts {
+		shares, err := ShareRating(v.Receipt().Rating)
 		if err != nil {
 			return IssuedCertificate{}, err
 		}

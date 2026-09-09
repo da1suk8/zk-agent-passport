@@ -32,16 +32,6 @@ func ToBig(e Element) (*big.Int, error) {
 	return v, nil
 }
 
-// MustBig parses a canonical element and panics on malformed input. Use it
-// only for values produced by this package.
-func MustBig(e Element) *big.Int {
-	v, err := ToBig(e)
-	if err != nil {
-		panic(err)
-	}
-	return v
-}
-
 // FromBig reduces an integer into the field.
 func FromBig(v *big.Int) Element {
 	return new(big.Int).Mod(v, Modulus).String()

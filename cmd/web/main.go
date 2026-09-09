@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +30,34 @@ import (
 
 //go:embed index.html
 var indexHTML []byte
+
+// checkLabels maps the model layer's check keys to display labels. The
+// order of checks is owned by passport.GatewayChecks and verifier.Checks.
+var checkLabels = map[string]string{
+	"issuer-registered":     "Issuer が Registry に登録済み",
+	"receipt-signature":     "Ed25519 署名が有効",
+	"receipt-unexpired":     "期限内",
+	"rating-range":          "rating が 1〜5",
+	"receipt-unused":        "receiptId が未使用",
+	"issuer-once-per-epoch": "同じ Issuer・Passport・Domain・Epoch で 2 件目でない",
+	"keyset-known":          "Committee の鍵セットが既知",
+	"certificate-unexpired": "Certificate が期限内",
+	"proof-unexpired":       "Proof が期限内",
+	"receipt-count":         "receiptCount ≥ minimumReceiptCount",
+	"policy-hash":           "policyHash が Policy と一致",
+	"policy-match":          "Domain・Epoch が Policy と一致",
+	"committee-quorum":      "異なる 2 ノードの署名が有効",
+	"nonce-issued":          "nonce がこの Service の発行したもの",
+	"nonce-unused":          "nonce が未使用",
+	"proof-valid":           "ZK Proof が有効（持ち主・score ≥ 閾値・Manifest の変更が許可範囲内）",
+}
+
+func label(key string) string {
+	if l, ok := checkLabels[key]; ok {
+		return l
+	}
+	return key
+}
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "listen address")
@@ -174,7 +203,7 @@ func (s *server) replay(w http.ResponseWriter, _ *http.Request) {
 	start := time.Now()
 	decision, err := last.world.Access(last.challenge, last.pkg)
 	resp.Stats["verifyTook"] = since(start)
-	step := verifyStep(last.world, last.pkg, decision, err, "同じ nonce の証明をもう一度送信")
+	step := verifyStep(decision, err, "同じ nonce の証明をもう一度送信")
 	step.ID = "replay"
 	resp.Steps = append(resp.Steps, step)
 	if err != nil {
@@ -237,11 +266,8 @@ func (s *server) execute(req RunRequest) (*RunResponse, error) {
 
 	// Step 2: gateway checks (already passed during provisioning) and sharing.
 	var gatewayChecks []Check
-	for _, name := range []string{
-		"Issuer が Registry に登録済み", "Ed25519 署名が有効", "期限内", "rating が 1〜5",
-		"receiptId が未使用", "同じ Issuer・Passport・Domain・Epoch で 2 件目でない",
-	} {
-		gatewayChecks = append(gatewayChecks, Check{Name: name, Status: "ok"})
+	for _, key := range passport.GatewayChecks {
+		gatewayChecks = append(gatewayChecks, Check{Name: label(key), Status: "ok"})
 	}
 	resp.Steps = append(resp.Steps, Step{
 		ID: "gateway", From: "gateway", To: "committee",
@@ -340,7 +366,7 @@ func (s *server) execute(req RunRequest) (*RunResponse, error) {
 	start = time.Now()
 	decision, verr := world.Access(ch, pkg)
 	resp.Stats["verifyTook"] = since(start)
-	resp.Steps = append(resp.Steps, verifyStep(world, pkg, decision, verr, ""))
+	resp.Steps = append(resp.Steps, verifyStep(decision, verr, ""))
 	if verr != nil {
 		resp.Outcome = "rejected"
 		resp.Reason = verr.Error()
@@ -352,50 +378,16 @@ func (s *server) execute(req RunRequest) (*RunResponse, error) {
 	return resp, nil
 }
 
-// verifyStep renders the verifier's ordered checklist. The verifier stops at
-// the first failing check, so later checks are reported as skipped.
-func verifyStep(world *demo.World, pkg *passport.ProofPackage, decision verifier.Decision, err error, subtitle string) Step {
-	names := []string{
-		"Committee の鍵セットが既知",
-		"Certificate が期限内",
-		"Proof が期限内",
-		"receiptCount ≥ minimumReceiptCount",
-		"Domain・Epoch が Policy と一致",
-		"異なる 2 ノードの署名が有効",
-		"nonce が未使用",
-		"ZK Proof が有効（持ち主・score ≥ 閾値・Manifest の変更が許可範囲内）",
-	}
-	failAt := len(names)
-	if err != nil {
-		switch {
-		case errors.Is(err, verifier.ErrUnknownKeyset):
-			failAt = 0
-		case errors.Is(err, verifier.ErrCertificateExpired):
-			failAt = 1
-		case errors.Is(err, verifier.ErrProofExpired):
-			failAt = 2
-		case errors.Is(err, verifier.ErrReceiptCount):
-			failAt = 3
-		case errors.Is(err, verifier.ErrPolicyMismatch):
-			failAt = 4
-		case errors.Is(err, verifier.ErrQuorum):
-			failAt = 5
-		case errors.Is(err, verifier.ErrNonceConsumed):
-			failAt = 6
-		default:
-			failAt = 7
-		}
-	}
+// verifyStep renders the verifier's own check report. The order and the
+// outcomes come from the verifier; this function only attaches labels.
+func verifyStep(decision verifier.Decision, err error, subtitle string) Step {
 	var checks []Check
-	for i, name := range names {
-		switch {
-		case i < failAt:
-			checks = append(checks, Check{Name: name, Status: "ok"})
-		case i == failAt:
-			checks = append(checks, Check{Name: name, Status: "fail", Detail: err.Error()})
-		default:
-			checks = append(checks, Check{Name: name, Status: "skipped"})
+	for _, c := range decision.Checks {
+		check := Check{Name: label(c.Key), Status: string(c.Status)}
+		if c.Err != nil {
+			check.Detail = c.Err.Error()
 		}
+		checks = append(checks, check)
 	}
 	title := "6. Service が検証"
 	if subtitle != "" {
@@ -412,8 +404,6 @@ func verifyStep(world *demo.World, pkg *passport.ProofPackage, decision verifier
 		{Key: "certificateHash", Value: short(decision.CertificateHash, 14)},
 		{Key: "nonce", Value: "消費済みとして記録"},
 	}
-	_ = pkg
-	_ = world
 	return step
 }
 
@@ -469,19 +459,10 @@ func proveReason(err error) string {
 // trimPrefix keeps only the innermost detail of a wrapped manifest error.
 func trimPrefix(err error) string {
 	msg := err.Error()
-	if i := lastIndex(msg, ": "); i >= 0 {
+	if i := strings.LastIndex(msg, ": "); i >= 0 {
 		return msg[i+2:]
 	}
 	return msg
-}
-
-func lastIndex(s, sub string) int {
-	for i := len(s) - len(sub); i >= 0; i-- {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
 }
 
 // describeVersionPolicy renders which manifest fields may change.
@@ -495,7 +476,7 @@ func describeVersionPolicy(vp passport.ManifestVersionPolicy) string {
 	if len(mutable) == 0 {
 		return "変更不可（strict）"
 	}
-	return join(mutable) + " は許可リスト内で変更可 / 他は不可"
+	return strings.Join(mutable, ", ") + " は許可リスト内で変更可 / 他は不可"
 }
 
 // allowlistLines lists the permitted values per mutable field.
@@ -503,21 +484,10 @@ func allowlistLines(vp passport.ManifestVersionPolicy) []KV {
 	var lines []KV
 	for i := 0; i < passport.ManifestFieldCount; i++ {
 		if vp.Mutable(i) {
-			lines = append(lines, KV{Key: "  許可: " + passport.ManifestFieldNames[i], Value: join(vp.Allowed[i])})
+			lines = append(lines, KV{Key: "  許可: " + passport.ManifestFieldNames[i], Value: strings.Join(vp.Allowed[i], ", ")})
 		}
 	}
 	return lines
-}
-
-func join(items []string) string {
-	out := ""
-	for i, it := range items {
-		if i > 0 {
-			out += ", "
-		}
-		out += it
-	}
-	return out
 }
 
 // manifestDelta notes whether the current manifest differs from the
