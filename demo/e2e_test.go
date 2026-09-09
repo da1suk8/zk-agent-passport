@@ -1,11 +1,13 @@
 package demo
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/da1suk8/zk-agent-passport/field"
 	"github.com/da1suk8/zk-agent-passport/passport"
 	"github.com/da1suk8/zk-agent-passport/verifier"
 	"github.com/da1suk8/zk-agent-passport/zkp"
@@ -213,11 +215,51 @@ func TestVerifierRejectsProofMixedWithAnotherCertificate(t *testing.T) {
 	for _, node := range w.Committee[:passport.Quorum] {
 		mixed.Signatures = append(mixed.Signatures, passport.CommitteeSignature{NodeID: node.NodeID, Signature: node.Sign(msg)})
 	}
+	presentation, err := mixed.Present()
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = w.Verifier.VerifyAccess(verifier.AccessRequest{
-		Certificate: mixed, Policy: w.Policy, Challenge: ch, Proof: pkg, Now: Now,
+		Presentation: presentation, Policy: w.Policy, Challenge: ch, Proof: pkg, Now: Now,
 	})
 	if !errors.Is(err, verifier.ErrInvalidProof) {
 		t.Fatalf("expected invalid proof, got %v", err)
+	}
+}
+
+func TestVerifierRejectsPresentationWithForgedField(t *testing.T) {
+	w, ch, pkg := proven(t)
+	forged := pkg.Presentation
+	forged.ExpiresAt = field.FromInt(Now + 100_000)
+	_, err := w.Verifier.VerifyAccess(verifier.AccessRequest{
+		Presentation: forged, Policy: w.Policy, Challenge: ch, Proof: pkg, Now: Now,
+	})
+	if !errors.Is(err, verifier.ErrInvalidProof) {
+		t.Fatalf("expected invalid proof for a forged presentation field, got %v", err)
+	}
+}
+
+func TestCannotProveWithTooFewReceipts(t *testing.T) {
+	opts := DefaultOptions()
+	opts.MinimumReceiptCount = 4
+	w, err := NewWorldWith(sys, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, _ := w.NewChallenge()
+	if _, err := w.Prove(ch); !errors.Is(err, passport.ErrReceiptCountNotMet) {
+		t.Fatalf("expected receipt count error, got %v", err)
+	}
+}
+
+func TestPresentationWithholdsReceiptCount(t *testing.T) {
+	_, _, pkg := proven(t)
+	raw, err := json.Marshal(pkg.Presentation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "receiptCount") {
+		t.Fatal("presentation exposes the receipt count")
 	}
 }
 
@@ -279,10 +321,10 @@ func TestVerifierRejectsReplayedNonce(t *testing.T) {
 
 func TestVerifierRejectsSingleCommitteeSignature(t *testing.T) {
 	w, ch, pkg := proven(t)
-	single := w.Issued.Certificate
+	single := pkg.Presentation
 	single.Signatures = single.Signatures[:1]
 	_, err := w.Verifier.VerifyAccess(verifier.AccessRequest{
-		Certificate: single, Policy: w.Policy, Challenge: ch, Proof: pkg, Now: Now,
+		Presentation: single, Policy: w.Policy, Challenge: ch, Proof: pkg, Now: Now,
 	})
 	if !errors.Is(err, verifier.ErrQuorum) {
 		t.Fatalf("expected quorum error, got %v", err)

@@ -92,6 +92,46 @@ type ScoreCertificate struct {
 	Signatures []CommitteeSignature `json:"signatures"`
 }
 
+// CertificatePresentation is what the agent shows a verifier: the
+// certificate hash, the committee signatures over it, and the certificate
+// fields the verifier needs. The receipt count is withheld; the proof shows
+// that the hash opens to a count meeting the policy's minimum, and that the
+// presented fields are the ones behind the hash.
+type CertificatePresentation struct {
+	CertificateHash         field.Element        `json:"certificateHash"`
+	CertificateID           field.Element        `json:"certificateId"`
+	PassportCommitment      field.Element        `json:"passportCommitment"`
+	AgentManifestCommitment field.Element        `json:"agentManifestCommitment"`
+	TaskDomain              field.Element        `json:"taskDomain"`
+	AggregationEpoch        field.Element        `json:"aggregationEpoch"`
+	ScoreCommitment         field.Element        `json:"scoreCommitment"`
+	IssuedAt                field.Element        `json:"issuedAt"`
+	ExpiresAt               field.Element        `json:"expiresAt"`
+	CommitteeKeysetID       field.Element        `json:"committeeKeysetId"`
+	Signatures              []CommitteeSignature `json:"signatures"`
+}
+
+// Present redacts the certificate for a verifier.
+func (c ScoreCertificate) Present() (CertificatePresentation, error) {
+	hash, err := CertificateHash(c.CertificatePayload)
+	if err != nil {
+		return CertificatePresentation{}, err
+	}
+	return CertificatePresentation{
+		CertificateHash:         hash,
+		CertificateID:           c.CertificateID,
+		PassportCommitment:      c.PassportCommitment,
+		AgentManifestCommitment: c.AgentManifestCommitment,
+		TaskDomain:              c.TaskDomain,
+		AggregationEpoch:        c.AggregationEpoch,
+		ScoreCommitment:         c.ScoreCommitment,
+		IssuedAt:                c.IssuedAt,
+		ExpiresAt:               c.ExpiresAt,
+		CommitteeKeysetID:       c.CommitteeKeysetID,
+		Signatures:              append([]CommitteeSignature(nil), c.Signatures...),
+	}, nil
+}
+
 // IssuedCertificate is what the passport holder receives over an
 // authenticated channel: the certificate and the opening of its score
 // commitment.

@@ -17,7 +17,6 @@ var (
 	ErrUnknownKeyset      = errors.New("certificate uses an unknown committee keyset")
 	ErrCertificateExpired = errors.New("certificate is expired")
 	ErrProofExpired       = errors.New("proof is expired")
-	ErrReceiptCount       = errors.New("certificate does not satisfy minimum receipt count")
 	ErrPolicyHash         = errors.New("policy hash does not match the policy")
 	ErrQuorum             = errors.New("certificate requires signatures from two committee nodes")
 	ErrUnknownNonce       = errors.New("nonce was not issued by this verifier")
@@ -32,7 +31,6 @@ var Checks = []string{
 	"keyset-known",
 	"certificate-unexpired",
 	"proof-unexpired",
-	"receipt-count",
 	"policy-hash",
 	"policy-match",
 	"committee-quorum",
@@ -104,13 +102,15 @@ func nonceKey(ch passport.Challenge) string {
 	return ch.VerifierID + ":" + ch.Nonce
 }
 
-// AccessRequest is what an agent submits.
+// AccessRequest is what an agent submits. The certificate arrives redacted:
+// the verifier never sees the receipt count, only the hash the committee
+// signed and the fields the proof binds to that hash.
 type AccessRequest struct {
-	Certificate passport.ScoreCertificate
-	Policy      passport.PolicyBundle
-	Challenge   passport.Challenge
-	Proof       *passport.ProofPackage
-	Now         int64
+	Presentation passport.CertificatePresentation
+	Policy       passport.PolicyBundle
+	Challenge    passport.Challenge
+	Proof        *passport.ProofPackage
+	Now          int64
 }
 
 // Decision is the result of a verification. Checks is filled in whether or
@@ -143,11 +143,10 @@ func (r *checkRun) do(key string, fn func() error) {
 // VerifyAccess runs every check in the order of Checks and consumes the
 // nonce only on success.
 func (v *Verifier) VerifyAccess(req AccessRequest) (Decision, error) {
-	cert := req.Certificate
+	cert := req.Presentation
 	pol := req.Policy.Policy
 	now := field.FromInt(req.Now)
 	var run checkRun
-	var hash field.Element
 
 	run.do("keyset-known", func() error {
 		if cert.CommitteeKeysetID != passport.CommitteeKeysetID {
@@ -160,9 +159,6 @@ func (v *Verifier) VerifyAccess(req AccessRequest) (Decision, error) {
 	})
 	run.do("proof-unexpired", func() error {
 		return lessIs(req.Challenge.ProofExpiresAt, now, ErrProofExpired)
-	})
-	run.do("receipt-count", func() error {
-		return lessIs(cert.ReceiptCount, pol.MinimumReceiptCount, ErrReceiptCount)
 	})
 	run.do("policy-hash", func() error {
 		expected, err := passport.PolicyHash(pol)
@@ -185,11 +181,10 @@ func (v *Verifier) VerifyAccess(req AccessRequest) (Decision, error) {
 		return nil
 	})
 	run.do("committee-quorum", func() error {
-		var err error
-		if hash, err = passport.CertificateHash(cert.CertificatePayload); err != nil {
-			return err
-		}
-		msg, err := field.Bytes(hash)
+		// The hash is taken from the presentation; the proof establishes
+		// that the presented fields (and the hidden receipt count) are its
+		// preimage.
+		msg, err := field.Bytes(cert.CertificateHash)
 		if err != nil {
 			return err
 		}
@@ -238,7 +233,7 @@ func (v *Verifier) VerifyAccess(req AccessRequest) (Decision, error) {
 	}
 	delete(v.pending, key)
 	v.used[key] = struct{}{}
-	return Decision{Authorized: true, CertificateHash: hash, Checks: run.checks}, nil
+	return Decision{Authorized: true, CertificateHash: cert.CertificateHash, Checks: run.checks}, nil
 }
 
 // lessIs returns failure if a < b as integers.

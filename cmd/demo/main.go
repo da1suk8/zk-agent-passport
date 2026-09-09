@@ -73,10 +73,10 @@ func run() error {
 	}
 	fmt.Printf("  prove=%s verify=%s proofBytes=%d\n", proveTook, since(start), len(raw))
 	printJSON(map[string]any{
-		"authorized":      decision.Authorized,
-		"scoreDisclosed":  false,
-		"receiptCount":    world.Issued.Certificate.ReceiptCount,
-		"certificateHash": decision.CertificateHash,
+		"authorized":            decision.Authorized,
+		"scoreDisclosed":        false,
+		"receiptCountDisclosed": false,
+		"certificateHash":       decision.CertificateHash,
 	})
 
 	step("Case 2: same agent after a permitted manifest update (modelId -> gpt-demo-v2)")

@@ -17,10 +17,10 @@ const ManifestFieldCount = 4
 const AllowlistDepth = 4
 
 // PassportCircuit proves that the holder of a passport secret owns a score
-// certificate whose committed score satisfies a public policy, and that the
-// agent's current manifest differs from the certified one only in the ways
-// the policy permits, without revealing the score, the secret, or the
-// manifests.
+// certificate whose committed score and hidden receipt count satisfy a
+// public policy, and that the agent's current manifest differs from the
+// certified one only in the ways the policy permits, without revealing the
+// score, the receipt count, the secret, or the manifests.
 type PassportCircuit struct {
 	// Certificate statement, all public.
 	CertificateHash         frontend.Variable `gnark:",public"`
@@ -30,7 +30,6 @@ type PassportCircuit struct {
 	TaskDomain              frontend.Variable `gnark:",public"`
 	AggregationEpoch        frontend.Variable `gnark:",public"`
 	ScoreCommitment         frontend.Variable `gnark:",public"`
-	ReceiptCount            frontend.Variable `gnark:",public"`
 	CertificateIssuedAt     frontend.Variable `gnark:",public"`
 	CertificateExpiresAt    frontend.Variable `gnark:",public"`
 	CommitteeKeysetID       frontend.Variable `gnark:",public"`
@@ -56,6 +55,9 @@ type PassportCircuit struct {
 	ScoreSalt    frontend.Variable
 	AgentSecret  frontend.Variable
 	PassportSalt frontend.Variable
+	// ReceiptCount is part of the certificate but stays hidden; the circuit
+	// proves it meets the policy's minimum.
+	ReceiptCount frontend.Variable
 
 	// CertifiedManifest opens AgentManifestCommitment; CurrentManifest opens
 	// RequestedManifestCommitment. For every field that differs, the
@@ -144,6 +146,12 @@ func (c *PassportCircuit) Define(api frontend.API) error {
 	api.ToBinary(c.Score, ScoreBits)
 	api.ToBinary(c.RequiredThreshold, ScoreBits)
 	api.ToBinary(api.Sub(c.Score, c.RequiredThreshold), ScoreBits)
+
+	// receiptCount >= minimumReceiptCount, likewise over 32-bit values. The
+	// count stays private; only the fact that it meets the minimum is shown.
+	api.ToBinary(c.ReceiptCount, ScoreBits)
+	api.ToBinary(c.MinimumReceiptCount, ScoreBits)
+	api.ToBinary(api.Sub(c.ReceiptCount, c.MinimumReceiptCount), ScoreBits)
 
 	// Groth16 does not bind public inputs that appear in no constraint. The
 	// challenge fields must therefore be constrained explicitly; requiring

@@ -15,10 +15,11 @@ var (
 )
 
 type scenario struct {
-	score, threshold int64
-	certified        passport.Manifest
-	current          passport.Manifest
-	policy           passport.ManifestVersionPolicy
+	score, threshold  int64
+	receipts, minimum int64
+	certified         passport.Manifest
+	current           passport.Manifest
+	policy            passport.ManifestVersionPolicy
 }
 
 // buildWitness produces a witness for a scenario, computing the allowlist
@@ -33,11 +34,18 @@ func buildWitness(t *testing.T, sc scenario) zkp.Witness {
 	}
 	rnd := func() field.Element { return must(field.Random()) }
 
+	if sc.receipts == 0 {
+		sc.receipts = 3
+	}
+	if sc.minimum == 0 {
+		sc.minimum = 3
+	}
 	w := zkp.Witness{
 		Score:             field.FromInt(sc.score),
 		ScoreSalt:         rnd(),
 		AgentSecret:       rnd(),
 		PassportSalt:      rnd(),
+		ReceiptCount:      field.FromInt(sc.receipts),
 		CertifiedManifest: passport.ManifestFields(sc.certified),
 		CurrentManifest:   passport.ManifestFields(sc.current),
 	}
@@ -64,18 +72,17 @@ func buildWitness(t *testing.T, sc scenario) zkp.Witness {
 	p.TaskDomain = "1001"
 	p.AggregationEpoch = "202608"
 	p.ScoreCommitment = must(field.Commit(w.Score, w.ScoreSalt))
-	p.ReceiptCount = "3"
 	p.CertificateIssuedAt = "1800000000"
 	p.CertificateExpiresAt = "1800000900"
 	p.CommitteeKeysetID = "1"
 	p.CertificateHash = must(field.Hash(
 		p.CertificateID, p.PassportCommitment, p.AgentManifestCommitment, p.TaskDomain, p.AggregationEpoch,
-		p.ScoreCommitment, p.ReceiptCount, p.CertificateIssuedAt, p.CertificateExpiresAt, p.CommitteeKeysetID,
+		p.ScoreCommitment, w.ReceiptCount, p.CertificateIssuedAt, p.CertificateExpiresAt, p.CommitteeKeysetID,
 	))
 	policy := passport.Policy{
 		PolicyVersion:               "2",
 		RequiredThreshold:           field.FromInt(sc.threshold),
-		MinimumReceiptCount:         "3",
+		MinimumReceiptCount:         field.FromInt(sc.minimum),
 		RequestedTaskDomain:         p.TaskDomain,
 		RequestedManifestCommitment: must(passport.ManifestCommitment(sc.current)),
 		RequestedAggregationEpoch:   p.AggregationEpoch,
@@ -122,14 +129,14 @@ func TestProofBindsEveryPublicInput(t *testing.T) {
 	}
 
 	tamper := map[string]func(*zkp.PublicInputs){
-		"nonce":          func(p *zkp.PublicInputs) { p.Nonce = "12345" },
-		"verifierId":     func(p *zkp.PublicInputs) { p.VerifierID = "999" },
-		"proofExpiresAt": func(p *zkp.PublicInputs) { p.ProofExpiresAt = "1900000000" },
-		"receiptCount":   func(p *zkp.PublicInputs) { p.ReceiptCount = "99" },
-		"threshold":      func(p *zkp.PublicInputs) { p.RequiredThreshold = "1" },
-		"manifest":       func(p *zkp.PublicInputs) { p.RequestedManifestCommitment = "7" },
-		"mutableMask":    func(p *zkp.PublicInputs) { p.ManifestMutableMask = "15" },
-		"allowlistRoot":  func(p *zkp.PublicInputs) { p.ManifestAllowlistRoot = "8" },
+		"nonce":           func(p *zkp.PublicInputs) { p.Nonce = "12345" },
+		"verifierId":      func(p *zkp.PublicInputs) { p.VerifierID = "999" },
+		"proofExpiresAt":  func(p *zkp.PublicInputs) { p.ProofExpiresAt = "1900000000" },
+		"minimumReceipts": func(p *zkp.PublicInputs) { p.MinimumReceiptCount = "1" },
+		"threshold":       func(p *zkp.PublicInputs) { p.RequiredThreshold = "1" },
+		"manifest":        func(p *zkp.PublicInputs) { p.RequestedManifestCommitment = "7" },
+		"mutableMask":     func(p *zkp.PublicInputs) { p.ManifestMutableMask = "15" },
+		"allowlistRoot":   func(p *zkp.PublicInputs) { p.ManifestAllowlistRoot = "8" },
 	}
 	for name, mutate := range tamper {
 		statement := w.PublicInputs
@@ -145,6 +152,14 @@ func TestCannotProveBelowThreshold(t *testing.T) {
 	w := buildWitness(t, scenario{score: 11, threshold: 12, certified: certifiedManifest, current: certifiedManifest, policy: permissivePolicy})
 	if _, err := s.Prove(w); err == nil {
 		t.Fatal("proof for score below threshold unexpectedly succeeded")
+	}
+}
+
+func TestCannotProveWithTooFewReceipts(t *testing.T) {
+	s := system(t)
+	w := buildWitness(t, scenario{score: 14, threshold: 12, receipts: 2, minimum: 3, certified: certifiedManifest, current: certifiedManifest, policy: permissivePolicy})
+	if _, err := s.Prove(w); err == nil {
+		t.Fatal("proof with too few receipts unexpectedly succeeded")
 	}
 }
 

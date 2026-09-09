@@ -43,13 +43,12 @@ var checkLabels = map[string]string{
 	"keyset-known":          "Committee の鍵セットが既知",
 	"certificate-unexpired": "Certificate が期限内",
 	"proof-unexpired":       "Proof が期限内",
-	"receipt-count":         "receiptCount ≥ minimumReceiptCount",
 	"policy-hash":           "policyHash が Policy と一致",
 	"policy-match":          "Domain・Epoch が Policy と一致",
 	"committee-quorum":      "異なる 2 ノードの署名が有効",
 	"nonce-issued":          "nonce がこの Service の発行したもの",
 	"nonce-unused":          "nonce が未使用",
-	"proof-valid":           "ZK Proof が有効（持ち主・score ≥ 閾値・Manifest の変更が許可範囲内）",
+	"proof-valid":           "ZK Proof が有効（持ち主・score ≥ 閾値・receiptCount ≥ 最低件数・Manifest の変更が許可範囲内）",
 }
 
 func label(key string) string {
@@ -231,14 +230,18 @@ func (s *server) execute(req RunRequest) (*RunResponse, error) {
 		m := req.CurrentManifest
 		opts.CurrentManifest = &m
 	}
-	vp := passport.ManifestVersionPolicy{Allowed: map[int][]string{}}
-	if len(req.AllowedModelIDs) > 0 {
-		vp.Allowed[0] = req.AllowedModelIDs
+	// Absent allowlists mean the demo default; present-but-empty ones mean
+	// the field is immutable.
+	if req.AllowedModelIDs != nil || req.AllowedPromptHashes != nil {
+		vp := passport.ManifestVersionPolicy{Allowed: map[int][]string{}}
+		if len(req.AllowedModelIDs) > 0 {
+			vp.Allowed[0] = req.AllowedModelIDs
+		}
+		if len(req.AllowedPromptHashes) > 0 {
+			vp.Allowed[1] = req.AllowedPromptHashes
+		}
+		opts.VersionPolicy = &vp
 	}
-	if len(req.AllowedPromptHashes) > 0 {
-		vp.Allowed[1] = req.AllowedPromptHashes
-	}
-	opts.VersionPolicy = &vp
 
 	start := time.Now()
 	world, err := demo.NewWorldWith(s.sys, opts)
@@ -290,7 +293,7 @@ func (s *server) execute(req RunRequest) (*RunResponse, error) {
 	committeeLines = append(committeeLines,
 		KV{Key: "合計 score", Value: world.Issued.Score, Secret: true},
 		KV{Key: "scoreCommitment", Value: short(cert.ScoreCommitment, 14)},
-		KV{Key: "receiptCount", Value: cert.ReceiptCount},
+		KV{Key: "receiptCount", Value: cert.ReceiptCount, Secret: true},
 		KV{Key: "署名", Value: fmt.Sprintf("%s, %s（3 ノード中 2）", cert.Signatures[0].NodeID, cert.Signatures[1].NodeID)},
 	)
 	resp.Steps = append(resp.Steps, Step{
@@ -357,7 +360,8 @@ func (s *server) execute(req RunRequest) (*RunResponse, error) {
 		Lines: []KV{
 			{Key: "証明時間", Value: proveTook},
 			{Key: "Proof サイズ", Value: fmt.Sprintf("%d bytes", len(raw))},
-			{Key: "回路が示すこと", Value: "証明書とPolicyのハッシュ一致 / 封筒の中身を知っている / 持ち主である / 分野・期間の一致 / Manifest の変更が許可範囲内 / score ≥ 閾値"},
+			{Key: "回路が示すこと", Value: "証明書とPolicyのハッシュ一致 / 封筒の中身を知っている / 持ち主である / 分野・期間の一致 / Manifest の変更が許可範囲内 / score ≥ 閾値 / receiptCount ≥ 最低件数"},
+			{Key: "Service へ渡すもの", Value: "receiptCount を除いた証明書（hash と署名つき）+ Proof"},
 		},
 		Status: "ok",
 	})
@@ -421,7 +425,7 @@ func panels(world *demo.World, authorized bool) (visible, hidden []KV) {
 		{Key: "Certificate の Manifest", Value: short(cert.AgentManifestCommitment, 14)},
 		{Key: "評価期間", Value: cert.AggregationEpoch},
 		{Key: "閾値の条件", Value: "score ≥ " + pol.RequiredThreshold},
-		{Key: "Receipt 件数", Value: cert.ReceiptCount + " 件（≥ " + pol.MinimumReceiptCount + "）"},
+		{Key: "件数の条件", Value: "receiptCount ≥ " + pol.MinimumReceiptCount + "（件数自体は非開示）"},
 		{Key: "現在の Manifest", Value: short(pol.RequestedManifestCommitment, 14) + manifestDelta(world)},
 		{Key: "変更ポリシー", Value: describeVersionPolicy(*world.Options.VersionPolicy)},
 		{Key: "Passport commitment", Value: short(cert.PassportCommitment, 14)},
@@ -429,6 +433,7 @@ func panels(world *demo.World, authorized bool) (visible, hidden []KV) {
 	}
 	hidden = []KV{
 		{Key: "合計 score", Value: world.Issued.Score, Secret: true},
+		{Key: "Receipt 件数", Value: cert.ReceiptCount, Secret: true},
 	}
 	for i, rc := range world.Receipts {
 		hidden = append(hidden, KV{Key: fmt.Sprintf("Provider %s の評価", providerLabel(i)), Value: fmt.Sprint(rc.Rating), Secret: true})
@@ -445,6 +450,8 @@ func proveReason(err error) string {
 	switch {
 	case errors.Is(err, passport.ErrThresholdNotMet):
 		return "score が閾値に届かないため、証明を作れない"
+	case errors.Is(err, passport.ErrReceiptCountNotMet):
+		return "Receipt 件数が Policy の最低件数に届かないため、証明を作れない"
 	case errors.Is(err, passport.ErrManifestFieldImmutable):
 		return "Policy が変更を許可していない Manifest 項目が変わっているため、証明を作れない（" + trimPrefix(err) + "）"
 	case errors.Is(err, passport.ErrManifestValueNotAllowed):

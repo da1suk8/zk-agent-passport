@@ -11,28 +11,24 @@ import (
 // Prover-side errors. They mirror what the circuit would reject, so that an
 // agent gets a clear reason instead of a failed proof.
 var (
-	ErrThresholdNotMet = errors.New("score does not satisfy the policy threshold")
-	ErrPolicyMismatch  = errors.New("certificate does not satisfy the requested policy")
+	ErrThresholdNotMet    = errors.New("score does not satisfy the policy threshold")
+	ErrReceiptCountNotMet = errors.New("receipt count does not satisfy the policy minimum")
+	ErrPolicyMismatch     = errors.New("certificate does not satisfy the requested policy")
 )
 
-// BuildStatement assembles the public inputs for one certificate, policy,
-// and challenge. Both the prover and the verifier compute it independently.
-func BuildStatement(cert ScoreCertificate, bundle PolicyBundle, ch Challenge) (zkp.PublicInputs, error) {
-	hash, err := CertificateHash(cert.CertificatePayload)
-	if err != nil {
-		return zkp.PublicInputs{}, err
-	}
-	p := cert.CertificatePayload
+// BuildStatement assembles the public inputs for one presented certificate,
+// policy, and challenge. Both the prover and the verifier compute it
+// independently.
+func BuildStatement(p CertificatePresentation, bundle PolicyBundle, ch Challenge) (zkp.PublicInputs, error) {
 	pol := bundle.Policy
 	return zkp.PublicInputs{
-		CertificateHash:         hash,
+		CertificateHash:         p.CertificateHash,
 		CertificateID:           p.CertificateID,
 		PassportCommitment:      p.PassportCommitment,
 		AgentManifestCommitment: p.AgentManifestCommitment,
 		TaskDomain:              p.TaskDomain,
 		AggregationEpoch:        p.AggregationEpoch,
 		ScoreCommitment:         p.ScoreCommitment,
-		ReceiptCount:            p.ReceiptCount,
 		CertificateIssuedAt:     p.IssuedAt,
 		CertificateExpiresAt:    p.ExpiresAt,
 		CommitteeKeysetID:       p.CommitteeKeysetID,
@@ -65,12 +61,13 @@ type ProofRequest struct {
 	Challenge         Challenge
 }
 
-// ProofPackage is what the agent sends to the verifier alongside the
-// certificate. The statement is included for transparency; the verifier
-// rebuilds it from its own inputs and never trusts this copy.
+// ProofPackage is what the agent sends to the verifier: the redacted
+// certificate and the proof. The statement is included for transparency;
+// the verifier rebuilds it from its own inputs and never trusts this copy.
 type ProofPackage struct {
-	Proof     *zkp.Proof
-	Statement zkp.PublicInputs
+	Presentation CertificatePresentation
+	Proof        *zkp.Proof
+	Statement    zkp.PublicInputs
 }
 
 // Prove generates a proof that the agent's certificate satisfies the policy.
@@ -83,6 +80,13 @@ func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 	}
 	if below {
 		return nil, ErrThresholdNotMet
+	}
+	tooFew, err := field.Less(cert.ReceiptCount, pol.MinimumReceiptCount)
+	if err != nil {
+		return nil, err
+	}
+	if tooFew {
+		return nil, ErrReceiptCountNotMet
 	}
 	if cert.TaskDomain != pol.RequestedTaskDomain || cert.AggregationEpoch != pol.RequestedAggregationEpoch {
 		return nil, fmt.Errorf("%w: domain or epoch", ErrPolicyMismatch)
@@ -107,7 +111,11 @@ func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 		return nil, fmt.Errorf("%w: %w", ErrPolicyMismatch, err)
 	}
 
-	statement, err := BuildStatement(cert, req.Policy, req.Challenge)
+	presentation, err := cert.Present()
+	if err != nil {
+		return nil, err
+	}
+	statement, err := BuildStatement(presentation, req.Policy, req.Challenge)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +125,7 @@ func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 		ScoreSalt:         req.Issued.ScoreSalt,
 		AgentSecret:       req.Agent.AgentSecret,
 		PassportSalt:      req.Agent.PassportSalt,
+		ReceiptCount:      cert.ReceiptCount,
 		CertifiedManifest: ManifestFields(req.CertifiedManifest),
 		CurrentManifest:   ManifestFields(current),
 	}
@@ -136,5 +145,5 @@ func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prove: %w", err)
 	}
-	return &ProofPackage{Proof: proof, Statement: statement}, nil
+	return &ProofPackage{Presentation: presentation, Proof: proof, Statement: statement}, nil
 }

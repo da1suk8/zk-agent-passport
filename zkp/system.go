@@ -31,7 +31,6 @@ type PublicInputs struct {
 	TaskDomain              field.Element
 	AggregationEpoch        field.Element
 	ScoreCommitment         field.Element
-	ReceiptCount            field.Element
 	CertificateIssuedAt     field.Element
 	CertificateExpiresAt    field.Element
 	CommitteeKeysetID       field.Element
@@ -64,6 +63,7 @@ type Witness struct {
 	ScoreSalt    field.Element
 	AgentSecret  field.Element
 	PassportSalt field.Element
+	ReceiptCount field.Element
 
 	CertifiedManifest [ManifestFieldCount]field.Element
 	CurrentManifest   [ManifestFieldCount]field.Element
@@ -246,7 +246,6 @@ func toAssignment(w Witness, publicOnly bool) (*PassportCircuit, error) {
 	set(&c.TaskDomain, p.TaskDomain)
 	set(&c.AggregationEpoch, p.AggregationEpoch)
 	set(&c.ScoreCommitment, p.ScoreCommitment)
-	set(&c.ReceiptCount, p.ReceiptCount)
 	set(&c.CertificateIssuedAt, p.CertificateIssuedAt)
 	set(&c.CertificateExpiresAt, p.CertificateExpiresAt)
 	set(&c.CommitteeKeysetID, p.CommitteeKeysetID)
@@ -267,6 +266,7 @@ func toAssignment(w Witness, publicOnly bool) (*PassportCircuit, error) {
 		set(&c.ScoreSalt, w.ScoreSalt)
 		set(&c.AgentSecret, w.AgentSecret)
 		set(&c.PassportSalt, w.PassportSalt)
+		set(&c.ReceiptCount, w.ReceiptCount)
 		for i := 0; i < ManifestFieldCount; i++ {
 			set(&c.CertifiedManifest[i], w.CertifiedManifest[i])
 			set(&c.CurrentManifest[i], w.CurrentManifest[i])

@@ -232,14 +232,15 @@ func (w *World) Access(ch passport.Challenge, pkg *passport.ProofPackage) (verif
 	return w.AccessAt(ch, pkg, Now)
 }
 
-// AccessAt submits a proof to the verifier at a chosen time.
+// AccessAt submits a proof to the verifier at a chosen time. The verifier
+// receives the redacted certificate carried in the proof package.
 func (w *World) AccessAt(ch passport.Challenge, pkg *passport.ProofPackage, now int64) (verifier.Decision, error) {
 	return w.Verifier.VerifyAccess(verifier.AccessRequest{
-		Certificate: w.Issued.Certificate,
-		Policy:      w.Policy,
-		Challenge:   ch,
-		Proof:       pkg,
-		Now:         now,
+		Presentation: pkg.Presentation,
+		Policy:       w.Policy,
+		Challenge:    ch,
+		Proof:        pkg,
+		Now:          now,
 	})
 }
 
