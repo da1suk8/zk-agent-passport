@@ -39,22 +39,19 @@ var Checks = []string{
 	"proof-valid",
 }
 
-// CheckStatus is the outcome of one check.
-type CheckStatus string
+// CheckStatus and Check are shared with the gateway so that both report
+// their checks in one shape.
+type (
+	CheckStatus = passport.CheckStatus
+	Check       = passport.Check
+)
 
 // Check outcomes.
 const (
-	CheckOK      CheckStatus = "ok"
-	CheckFailed  CheckStatus = "fail"
-	CheckSkipped CheckStatus = "skipped"
+	CheckOK      = passport.CheckOK
+	CheckFailed  = passport.CheckFailed
+	CheckSkipped = passport.CheckSkipped
 )
-
-// Check is one verification item with its outcome.
-type Check struct {
-	Key    string
-	Status CheckStatus
-	Err    error
-}
 
 // Verifier is a service that gates access on a passport proof. It issues the
 // challenges it later accepts, so a proof can only be bound to a nonce this

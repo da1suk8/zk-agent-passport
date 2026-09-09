@@ -18,6 +18,23 @@ var (
 	ErrIssuerAlreadyContributed = errors.New("issuer already contributed to this passport, domain, and epoch")
 )
 
+// CheckStatus is the outcome of one check run by the gateway or a verifier.
+type CheckStatus string
+
+// Check outcomes.
+const (
+	CheckOK      CheckStatus = "ok"
+	CheckFailed  CheckStatus = "fail"
+	CheckSkipped CheckStatus = "skipped"
+)
+
+// Check is one check with its outcome.
+type Check struct {
+	Key    string
+	Status CheckStatus
+	Err    error
+}
+
 // GatewayChecks names the gateway's checks, in the order they run. User
 // interfaces may map these keys to labels; the order is owned here.
 var GatewayChecks = []string{
@@ -77,35 +94,86 @@ func NewInputGateway(registry IssuerRegistry) *InputGateway {
 // consumed, and returns it as validated for the epoch. A receipt that fails
 // any check leaves no state behind.
 func (g *InputGateway) ValidateReceipt(r Receipt, aggregationEpoch field.Element, now int64) (ValidatedReceipt, error) {
-	pub, ok := g.registry[r.IssuerID]
-	if !ok {
-		return ValidatedReceipt{}, fmt.Errorf("%w: %s", ErrIssuerNotRegistered, r.IssuerID)
-	}
-	msg, err := r.signable()
-	if err != nil {
-		return ValidatedReceipt{}, err
-	}
-	if !VerifySignature(pub, msg, r.Signature) {
-		return ValidatedReceipt{}, ErrReceiptSignature
-	}
-	if r.ExpiresAt < now {
-		return ValidatedReceipt{}, ErrReceiptExpired
-	}
-	if r.Rating < RatingMin || r.Rating > RatingMax {
-		return ValidatedReceipt{}, fmt.Errorf("%w: %d", ErrRatingRange, r.Rating)
-	}
-	if _, used := g.usedReceiptIDs[r.ReceiptID]; used {
-		return ValidatedReceipt{}, fmt.Errorf("%w: %s", ErrReceiptReused, r.ReceiptID)
-	}
+	v, _, err := g.ValidateReceiptReport(r, aggregationEpoch, now)
+	return v, err
+}
+
+// ValidateReceiptReport is ValidateReceipt with the outcome of every check
+// in the order of GatewayChecks. The gateway stops at the first failure and
+// reports the rest as skipped.
+func (g *InputGateway) ValidateReceiptReport(r Receipt, aggregationEpoch field.Element, now int64) (ValidatedReceipt, []Check, error) {
+	var run checkRun
+	var pub ed25519.PublicKey
 	key := strings.Join([]string{
 		r.IssuerID, r.PassportCommitment, r.AgentManifestCommitment, r.TaskDomain, aggregationEpoch,
 	}, ":")
-	if _, seen := g.issuerEpochKeys[key]; seen {
-		return ValidatedReceipt{}, ErrIssuerAlreadyContributed
+
+	run.do("issuer-registered", func() error {
+		var ok bool
+		if pub, ok = g.registry[r.IssuerID]; !ok {
+			return fmt.Errorf("%w: %s", ErrIssuerNotRegistered, r.IssuerID)
+		}
+		return nil
+	})
+	run.do("receipt-signature", func() error {
+		msg, err := r.signable()
+		if err != nil {
+			return err
+		}
+		if !VerifySignature(pub, msg, r.Signature) {
+			return ErrReceiptSignature
+		}
+		return nil
+	})
+	run.do("receipt-unexpired", func() error {
+		if r.ExpiresAt < now {
+			return ErrReceiptExpired
+		}
+		return nil
+	})
+	run.do("rating-range", func() error {
+		if r.Rating < RatingMin || r.Rating > RatingMax {
+			return fmt.Errorf("%w: %d", ErrRatingRange, r.Rating)
+		}
+		return nil
+	})
+	run.do("receipt-unused", func() error {
+		if _, used := g.usedReceiptIDs[r.ReceiptID]; used {
+			return fmt.Errorf("%w: %s", ErrReceiptReused, r.ReceiptID)
+		}
+		return nil
+	})
+	run.do("issuer-once-per-epoch", func() error {
+		if _, seen := g.issuerEpochKeys[key]; seen {
+			return ErrIssuerAlreadyContributed
+		}
+		return nil
+	})
+	if run.err != nil {
+		return ValidatedReceipt{}, run.checks, run.err
 	}
 	g.usedReceiptIDs[r.ReceiptID] = struct{}{}
 	g.issuerEpochKeys[key] = struct{}{}
-	return ValidatedReceipt{receipt: r, epoch: aggregationEpoch}, nil
+	return ValidatedReceipt{receipt: r, epoch: aggregationEpoch}, run.checks, nil
+}
+
+// checkRun executes checks in order and records their outcomes.
+type checkRun struct {
+	checks []Check
+	err    error
+}
+
+func (r *checkRun) do(key string, fn func() error) {
+	if r.err != nil {
+		r.checks = append(r.checks, Check{Key: key, Status: CheckSkipped})
+		return
+	}
+	if err := fn(); err != nil {
+		r.err = err
+		r.checks = append(r.checks, Check{Key: key, Status: CheckFailed, Err: err})
+		return
+	}
+	r.checks = append(r.checks, Check{Key: key, Status: CheckOK})
 }
 
 // ShareRating splits a rating into three additive shares over the field:
