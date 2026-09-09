@@ -81,9 +81,11 @@ func (v *Verifier) VerifyAccess(req AccessRequest) (Decision, error) {
 		}
 		return Decision{}, ErrReceiptCount
 	}
-	if cert.AgentManifestCommitment != pol.RequestedManifestCommitment ||
-		cert.TaskDomain != pol.RequestedTaskDomain ||
-		cert.AggregationEpoch != pol.RequestedAggregationEpoch {
+	// Domain and epoch are checked here as well as in the circuit. The
+	// manifest relation is checked only in the circuit: the verifier knows
+	// the two commitments but not the manifests behind them, and the policy
+	// may permit them to differ.
+	if cert.TaskDomain != pol.RequestedTaskDomain || cert.AggregationEpoch != pol.RequestedAggregationEpoch {
 		return Decision{}, ErrPolicyMismatch
 	}
 

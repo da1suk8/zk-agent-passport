@@ -16,14 +16,11 @@ type Manifest struct {
 	PermissionScope  string `json:"permissionScope"`
 }
 
-// ManifestCommitment hashes the canonical manifest fields into the field.
+// ManifestCommitment hashes the manifest fields, in circuit order, into the
+// field.
 func ManifestCommitment(m Manifest) (field.Element, error) {
-	return field.Hash(
-		field.FromText(m.ModelID),
-		field.FromText(m.SystemPromptHash),
-		field.FromText(m.ToolPolicyHash),
-		field.FromText(m.PermissionScope),
-	)
+	fields := ManifestFields(m)
+	return field.Hash(fields[:]...)
 }
 
 // Agent holds the passport secret. The unit of identity is the holder of
@@ -36,6 +33,19 @@ type Agent struct {
 	PassportCommitment      field.Element
 	AgentManifestCommitment field.Element
 	Manifest                Manifest
+}
+
+// UpdateManifest replaces the agent's declared manifest. Reputation stays
+// bound to the manifest that was certified; whether the new manifest may use
+// it is decided by the service's ManifestVersionPolicy inside the proof.
+func (a *Agent) UpdateManifest(m Manifest) error {
+	commitment, err := ManifestCommitment(m)
+	if err != nil {
+		return fmt.Errorf("manifest commitment: %w", err)
+	}
+	a.Manifest = m
+	a.AgentManifestCommitment = commitment
+	return nil
 }
 
 // NewAgent creates a passport for a manifest.

@@ -43,10 +43,18 @@ type PublicInputs struct {
 	RequestedTaskDomain         field.Element
 	RequestedManifestCommitment field.Element
 	RequestedAggregationEpoch   field.Element
+	ManifestMutableMask         field.Element
+	ManifestAllowlistRoot       field.Element
 
 	VerifierID     field.Element
 	Nonce          field.Element
 	ProofExpiresAt field.Element
+}
+
+// MerkleWitness is one allowlist inclusion path.
+type MerkleWitness struct {
+	Index    field.Element
+	Siblings [AllowlistDepth]field.Element
 }
 
 // Witness is the full assignment: the public statement plus the secrets.
@@ -56,6 +64,10 @@ type Witness struct {
 	ScoreSalt    field.Element
 	AgentSecret  field.Element
 	PassportSalt field.Element
+
+	CertifiedManifest [ManifestFieldCount]field.Element
+	CurrentManifest   [ManifestFieldCount]field.Element
+	AllowlistPaths    [ManifestFieldCount]MerkleWitness
 }
 
 // Proof is a Groth16 proof for the passport circuit.
@@ -107,52 +119,55 @@ func Setup() (*System, error) {
 }
 
 // LoadOrSetup reuses keys cached under dir, or runs Setup and caches them.
+// The cache file names carry the circuit's constraint and public-input
+// counts, so keys generated for an older circuit are never reused.
 func LoadOrSetup(dir string) (*System, error) {
-	pkPath := filepath.Join(dir, "passport.pk")
-	vkPath := filepath.Join(dir, "passport.vk")
-	if sys, err := load(pkPath, vkPath); err == nil {
-		return sys, nil
-	}
-	sys, err := Setup()
+	ccs, err := Compile()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compile: %w", err)
+	}
+	tag := fmt.Sprintf("passport-c%d-p%d", ccs.GetNbConstraints(), ccs.GetNbPublicVariables())
+	pkPath := filepath.Join(dir, tag+".pk")
+	vkPath := filepath.Join(dir, tag+".vk")
+	if pk, vk, err := loadKeys(pkPath, vkPath); err == nil {
+		return &System{ccs: ccs, pk: pk, vk: vk}, nil
+	}
+	pk, vk, err := groth16.Setup(ccs)
+	if err != nil {
+		return nil, fmt.Errorf("setup: %w", err)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	if err := writeTo(pkPath, sys.pk); err != nil {
+	if err := writeTo(pkPath, pk); err != nil {
 		return nil, err
 	}
-	if err := writeTo(vkPath, sys.vk); err != nil {
+	if err := writeTo(vkPath, vk); err != nil {
 		return nil, err
 	}
-	return sys, nil
+	return &System{ccs: ccs, pk: pk, vk: vk}, nil
 }
 
-func load(pkPath, vkPath string) (*System, error) {
+func loadKeys(pkPath, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
 	pkFile, err := os.Open(pkPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer pkFile.Close()
 	vkFile, err := os.Open(vkPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer vkFile.Close()
 	pk := groth16.NewProvingKey(ecc.BN254)
 	if _, err := pk.ReadFrom(pkFile); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	vk := groth16.NewVerifyingKey(ecc.BN254)
 	if _, err := vk.ReadFrom(vkFile); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	ccs, err := Compile()
-	if err != nil {
-		return nil, err
-	}
-	return &System{ccs: ccs, pk: pk, vk: vk}, nil
+	return pk, vk, nil
 }
 
 func writeTo(path string, w io.WriterTo) error {
@@ -242,6 +257,8 @@ func toAssignment(w Witness, publicOnly bool) (*PassportCircuit, error) {
 	set(&c.RequestedTaskDomain, p.RequestedTaskDomain)
 	set(&c.RequestedManifestCommitment, p.RequestedManifestCommitment)
 	set(&c.RequestedAggregationEpoch, p.RequestedAggregationEpoch)
+	set(&c.ManifestMutableMask, p.ManifestMutableMask)
+	set(&c.ManifestAllowlistRoot, p.ManifestAllowlistRoot)
 	set(&c.VerifierID, p.VerifierID)
 	set(&c.Nonce, p.Nonce)
 	set(&c.ProofExpiresAt, p.ProofExpiresAt)
@@ -250,6 +267,14 @@ func toAssignment(w Witness, publicOnly bool) (*PassportCircuit, error) {
 		set(&c.ScoreSalt, w.ScoreSalt)
 		set(&c.AgentSecret, w.AgentSecret)
 		set(&c.PassportSalt, w.PassportSalt)
+		for i := 0; i < ManifestFieldCount; i++ {
+			set(&c.CertifiedManifest[i], w.CertifiedManifest[i])
+			set(&c.CurrentManifest[i], w.CurrentManifest[i])
+			set(&c.AllowlistIndex[i], w.AllowlistPaths[i].Index)
+			for k := 0; k < AllowlistDepth; k++ {
+				set(&c.AllowlistSiblings[i][k], w.AllowlistPaths[i].Siblings[k])
+			}
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("assignment: %w", err)

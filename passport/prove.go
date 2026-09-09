@@ -44,6 +44,8 @@ func BuildStatement(cert ScoreCertificate, bundle PolicyBundle, ch Challenge) (z
 		RequestedTaskDomain:         pol.RequestedTaskDomain,
 		RequestedManifestCommitment: pol.RequestedManifestCommitment,
 		RequestedAggregationEpoch:   pol.RequestedAggregationEpoch,
+		ManifestMutableMask:         pol.ManifestMutableMask,
+		ManifestAllowlistRoot:       pol.ManifestAllowlistRoot,
 
 		VerifierID:     ch.VerifierID,
 		Nonce:          ch.Nonce,
@@ -51,12 +53,16 @@ func BuildStatement(cert ScoreCertificate, bundle PolicyBundle, ch Challenge) (z
 	}, nil
 }
 
-// ProofRequest is everything the agent needs to prove access.
+// ProofRequest is everything the agent needs to prove access. The agent's
+// current manifest is Agent.Manifest; CertifiedManifest is the manifest the
+// certificate was issued for. A zero CertifiedManifest means the
+// certificate was issued for the agent's current manifest.
 type ProofRequest struct {
-	Agent     *Agent
-	Issued    IssuedCertificate
-	Policy    PolicyBundle
-	Challenge Challenge
+	Agent             *Agent
+	CertifiedManifest Manifest
+	Issued            IssuedCertificate
+	Policy            PolicyBundle
+	Challenge         Challenge
 }
 
 // ProofPackage is what the agent sends to the verifier alongside the
@@ -78,22 +84,55 @@ func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 	if below {
 		return nil, ErrThresholdNotMet
 	}
-	if cert.AgentManifestCommitment != pol.RequestedManifestCommitment ||
-		cert.TaskDomain != pol.RequestedTaskDomain ||
-		cert.AggregationEpoch != pol.RequestedAggregationEpoch {
-		return nil, ErrPolicyMismatch
+	if cert.TaskDomain != pol.RequestedTaskDomain || cert.AggregationEpoch != pol.RequestedAggregationEpoch {
+		return nil, fmt.Errorf("%w: domain or epoch", ErrPolicyMismatch)
 	}
+
+	// Both manifest commitments must open to manifests the agent knows.
+	if req.CertifiedManifest == (Manifest{}) {
+		req.CertifiedManifest = req.Agent.Manifest
+	}
+	certifiedCommitment, err := ManifestCommitment(req.CertifiedManifest)
+	if err != nil {
+		return nil, err
+	}
+	if certifiedCommitment != cert.AgentManifestCommitment {
+		return nil, fmt.Errorf("%w: certificate was not issued for the given certified manifest", ErrPolicyMismatch)
+	}
+	current := req.Agent.Manifest
+	if req.Agent.AgentManifestCommitment != pol.RequestedManifestCommitment {
+		return nil, fmt.Errorf("%w: policy requests a manifest other than the agent's current one", ErrPolicyMismatch)
+	}
+	if err := req.Policy.VersionPolicy.Permits(req.CertifiedManifest, current); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrPolicyMismatch, err)
+	}
+
 	statement, err := BuildStatement(cert, req.Policy, req.Challenge)
 	if err != nil {
 		return nil, err
 	}
-	proof, err := sys.Prove(zkp.Witness{
-		PublicInputs: statement,
-		Score:        req.Issued.Score,
-		ScoreSalt:    req.Issued.ScoreSalt,
-		AgentSecret:  req.Agent.AgentSecret,
-		PassportSalt: req.Agent.PassportSalt,
-	})
+	w := zkp.Witness{
+		PublicInputs:      statement,
+		Score:             req.Issued.Score,
+		ScoreSalt:         req.Issued.ScoreSalt,
+		AgentSecret:       req.Agent.AgentSecret,
+		PassportSalt:      req.Agent.PassportSalt,
+		CertifiedManifest: ManifestFields(req.CertifiedManifest),
+		CurrentManifest:   ManifestFields(current),
+	}
+	certifiedValues, currentValues := manifestValues(req.CertifiedManifest), manifestValues(current)
+	for i := 0; i < ManifestFieldCount; i++ {
+		path := EmptyPath()
+		if certifiedValues[i] != currentValues[i] {
+			p, ok := req.Policy.Allowlist.Path(i, currentValues[i])
+			if !ok {
+				return nil, fmt.Errorf("%w: %s", ErrManifestValueNotAllowed, ManifestFieldNames[i])
+			}
+			path = p
+		}
+		w.AllowlistPaths[i] = zkp.MerkleWitness{Index: field.FromInt(path.Index), Siblings: path.Siblings}
+	}
+	proof, err := sys.Prove(w)
 	if err != nil {
 		return nil, fmt.Errorf("prove: %w", err)
 	}

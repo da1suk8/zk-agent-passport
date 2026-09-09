@@ -59,6 +59,12 @@ func (n *CommitteeNode) PartialSum(batchKey string) field.Element {
 	return "0"
 }
 
+// BatchKey names one aggregation batch: one passport, one manifest, one
+// domain, one epoch.
+func BatchKey(passportCommitment, manifestCommitment, taskDomain, aggregationEpoch field.Element) string {
+	return strings.Join([]string{passportCommitment, manifestCommitment, taskDomain, aggregationEpoch}, ":")
+}
+
 // CertificatePayload is the signed content of a score certificate. The score
 // itself appears only as a hiding commitment.
 type CertificatePayload struct {
@@ -139,9 +145,7 @@ func IssueScoreCertificate(committee []*CommitteeNode, req AggregationRequest) (
 			return IssuedCertificate{}, fmt.Errorf("%w: %s", ErrBatchMismatch, r.ReceiptID)
 		}
 	}
-	batchKey := strings.Join([]string{
-		first.PassportCommitment, first.AgentManifestCommitment, first.TaskDomain, req.AggregationEpoch,
-	}, ":")
+	batchKey := BatchKey(first.PassportCommitment, first.AgentManifestCommitment, first.TaskDomain, req.AggregationEpoch)
 
 	// Secret-share every rating; node i only ever receives share i.
 	for _, r := range req.Receipts {
