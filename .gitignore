@@ -13,5 +13,5 @@ docs/slides/node_modules/
 # macOS and Office leftovers.
 .DS_Store
 ~$*
-# Per-machine Claude Code settings; .claude/launch.json is checked in.
-.claude/settings.local.json
+# Claude Code's local workspace settings.
+.claude/
