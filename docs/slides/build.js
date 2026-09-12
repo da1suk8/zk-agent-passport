@@ -1,3 +1,11 @@
+// Builds zk-agent-passport.pptx. The .pptx in this directory is generated, not
+// hand-edited: change this file and rebuild, or the next build discards the
+// edit.
+//
+//   cd docs/slides && npm install && npm run build
+//
+// pptxgenjs is pinned in package.json; 3.12.0 is what the committed deck was
+// built with.
 const pptxgen = require("pptxgenjs");
 
 const W = 13.333, H = 7.5, M = 0.7, CW = W - 2 * M;

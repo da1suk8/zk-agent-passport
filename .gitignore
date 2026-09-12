@@ -8,6 +8,8 @@ agent-state/
 /demo
 /service
 /web
+# Installed by `npm install` in docs/slides.
+docs/slides/node_modules/
 # macOS and Office leftovers.
 .DS_Store
 ~$*
