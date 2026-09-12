@@ -9,83 +9,132 @@
     --bg: #f6f7f9; --card: #ffffff; --ink: #1c1f26; --muted: #6b7280; --line: #e3e6eb;
     --ok: #15803d; --ok-bg: #dcfce7; --bad: #b91c1c; --bad-bg: #fee2e2; --skip: #9ca3af;
     --accent: #2563eb; --accent-bg: #dbeafe; --secret: #7c3aed; --secret-bg: #ede9fe;
+    --warn: #b45309; --warn-bg: #fef3c7;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
-  header { display: flex; align-items: baseline; gap: 20px; padding: 14px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
-  header h1 { font-size: 20px; margin: 0; }
-  header .sub { color: var(--muted); }
-  header .stats { margin-left: auto; display: flex; gap: 18px; font-variant-numeric: tabular-nums; color: var(--muted); }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; padding: 14px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 20px; margin: 0; white-space: nowrap; }
+  header .sub { color: var(--muted); font-size: 14px; flex: 1 1 340px; min-width: 260px; }
+  header .sub b { color: var(--ink); font-weight: 600; }
+  header .stats { margin-left: auto; display: flex; gap: 18px; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
   header .stats b { color: var(--ink); }
-  main { display: grid; grid-template-columns: 1fr 360px; gap: 18px; padding: 18px 24px; }
-  .controls { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: flex-end; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; grid-column: 1 / -1; }
-  .controls label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-  .controls .group { display: flex; gap: 10px; align-items: end; }
-  .controls input, .controls select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; width: 84px; }
-  .controls input.wide { width: 200px; }
-  .controls input.changed { border-color: #d97706; background: #fef3c7; }
-  .buttons { display: flex; gap: 10px; align-items: center; margin-left: auto; }
+  main { display: flex; flex-direction: column; gap: 14px; padding: 18px 24px 40px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+
+  .intro { padding: 16px 18px; }
+  .intro h2 { margin: 0 0 6px; font-size: 18px; }
+  .intro .lead { margin: 0 0 14px; font-size: 14px; color: var(--muted); max-width: 88ch; }
+  .intro .lead b { color: var(--ink); font-weight: 600; }
+  .intro .ask { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  button.sc { display: block; text-align: left; white-space: normal; height: 100%; padding: 11px 14px; border-radius: 12px; }
+  button.sc .t { display: block; font-weight: 700; font-size: 14.5px; }
+  button.sc .q { display: block; font-size: 12.5px; line-height: 1.45; color: var(--muted); margin-top: 4px; }
+  button.sc.active { border-color: var(--accent); background: var(--accent-bg); }
+  button.sc.active .t { color: var(--accent); }
+  .caption { margin-top: 12px; padding: 11px 13px; border-left: 4px solid var(--accent); background: var(--accent-bg); border-radius: 0 8px 8px 0; font-size: 14px; }
+  .caption b { color: var(--accent); }
+  .caption:empty { display: none; }
+
+  details.more { padding: 0; }
+  details.more > summary { cursor: pointer; padding: 12px 18px; font-size: 14px; font-weight: 600; color: var(--muted); list-style: none; }
+  details.more > summary::-webkit-details-marker { display: none; }
+  details.more > summary::before { content: "▸ "; }
+  details.more[open] > summary::before { content: "▾ "; }
+  details.more[open] > summary { border-bottom: 1px solid var(--line); }
+  .more-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 16px; }
+  .more-body h3 { margin: 0 0 2px; font-size: 14px; }
+  .more-body .hint { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+  .fields { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: flex-end; }
+  .fields label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .fields .group { display: flex; gap: 10px; align-items: end; }
+  .fields input, .fields select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; width: 84px; }
+  .fields input.wide { width: 200px; }
+  .fields input.changed { border-color: var(--warn); background: var(--warn-bg); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
   button { font: inherit; padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); background: #fff; cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  button:disabled { opacity: .5; cursor: default; }
-  .toggle { display: flex; align-items: center; gap: 6px; color: var(--secret); font-weight: 600; cursor: pointer; }
-  .flow { display: grid; grid-template-columns: repeat(9, auto); align-items: center; justify-content: space-between; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
-  .actor { border: 2px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 130px; text-align: center; transition: all .25s; }
-  .actor .name { font-weight: 700; }
-  .actor .role { font-size: 12px; color: var(--muted); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.attack { border-color: #fca5a5; color: var(--bad); font-size: 13px; padding: 7px 12px; }
+  button.link { border-color: #c4b5fd; color: var(--secret); font-size: 13px; padding: 7px 12px; }
+  .toggle { display: flex; align-items: center; gap: 6px; color: var(--secret); font-weight: 600; cursor: pointer; font-size: 13px; }
+
+  .flow { display: grid; grid-template-columns: repeat(9, auto); align-items: stretch; justify-content: space-between; gap: 8px; padding: 18px; }
+  .actor { border: 2px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 150px; text-align: center; transition: all .25s; display: flex; flex-direction: column; justify-content: center; }
+  .actor .name { font-weight: 700; font-size: 15px; }
+  .actor .role { font-size: 12px; line-height: 1.45; color: var(--muted); margin-top: 4px; }
   .actor.active { border-color: var(--accent); background: var(--accent-bg); transform: translateY(-2px); }
   .actor.rejected { border-color: var(--bad); background: var(--bad-bg); }
   .actor.done { border-color: var(--ok); }
-  .arrow { font-size: 22px; color: var(--line); transition: color .25s; }
+  .arrow { font-size: 22px; color: var(--line); transition: color .25s; align-self: center; }
   .arrow.active { color: var(--accent); }
-  .arrow.back { transform: scaleX(-1); }
+
+  .verdict { font-size: 22px; font-weight: 800; padding: 12px 16px; border-radius: 12px; text-align: center; position: sticky; top: 0; z-index: 5; }
+  .verdict.authorized { background: var(--ok-bg); color: var(--ok); border: 1px solid #86efac; }
+  .verdict.rejected { background: var(--bad-bg); color: var(--bad); border: 1px solid #fca5a5; }
+  .verdict.idle { background: var(--card); color: var(--muted); border: 1px solid var(--line); font-size: 15px; font-weight: 500; }
+  .verdict .reason { display: block; font-size: 14px; font-weight: 500; margin-top: 4px; }
+
+  .tabs { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
+  .tab { border: none; background: none; border-radius: 0; padding: 9px 14px; color: var(--muted); font-weight: 600; font-size: 14px; border-bottom: 3px solid transparent; }
+  .tab:hover:not(:disabled) { color: var(--ink); border-color: transparent; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 6px; vertical-align: middle; }
+  .tabs .toggle { margin-left: auto; padding-right: 6px; }
+
   .steps { display: flex; flex-direction: column; gap: 10px; }
   .step { background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--accent); border-radius: 12px; padding: 12px 16px; animation: pop .25s ease-out; }
   .step.rejected { border-left-color: var(--bad); }
   .step.skipped { border-left-color: var(--skip); opacity: .7; }
   .step.skipped .err { color: var(--muted); font-weight: 500; }
-  .step h3 { margin: 0 0 6px; font-size: 16px; }
-  .step .err { color: var(--bad); font-weight: 600; margin-top: 4px; }
-  .kv { display: grid; grid-template-columns: 200px 1fr; gap: 2px 12px; font-variant-numeric: tabular-nums; }
-  .kv .k { color: var(--muted); }
+  .step h3 { margin: 0 0 2px; font-size: 16px; }
+  .step .gloss { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+  .step .err { color: var(--bad); font-weight: 600; margin-top: 6px; }
+  .kv { display: grid; grid-template-columns: 240px 1fr; gap: 2px 12px; font-variant-numeric: tabular-nums; }
+  .kv .k { color: var(--muted); font-size: 14px; }
   .kv .v { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; word-break: break-all; }
-  .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; margin-top: 6px; }
+  .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; margin-top: 8px; }
   .check { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
   .check .mark { font-weight: 700; min-width: 1.2em; }
   .check.ok .mark { color: var(--ok); } .check.fail .mark { color: var(--bad); } .check.skipped { color: var(--skip); }
   .check .detail { color: var(--bad); }
-  aside { display: flex; flex-direction: column; gap: 14px; }
-  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
-  .panel h2 { margin: 0 0 8px; font-size: 15px; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
+  .panel h2 { margin: 0 0 2px; font-size: 15px; }
+  .panel .sub { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+  .panel.visible { border-color: #bbf7d0; }
   .panel.visible h2 { color: var(--ok); }
-  .panel.hidden-panel h2 { color: var(--muted); }
-  .panel .kv { grid-template-columns: 150px 1fr; }
-  .verdict { font-size: 26px; font-weight: 800; padding: 12px 16px; border-radius: 12px; text-align: center; }
-  .verdict.authorized { background: var(--ok-bg); color: var(--ok); }
-  .verdict.rejected { background: var(--bad-bg); color: var(--bad); }
-  .verdict.idle { background: var(--card); color: var(--muted); border: 1px solid var(--line); font-size: 16px; font-weight: 500; }
-  .verdict .reason { display: block; font-size: 14px; font-weight: 500; margin-top: 4px; }
+  .panel.hidden-panel h2 { color: var(--secret); }
+  .panel .empty { color: var(--muted); font-size: 14px; }
   .secret .v { color: var(--secret); background: var(--secret-bg); border-radius: 6px; padding: 0 6px; display: inline-block; }
-  body:not(.reveal) .secret .v { color: transparent; background: #d1d5db; user-select: none; }
+  body:not(.reveal) .secret .v { color: transparent; background: #d1d5db; user-select: none; white-space: nowrap; }
   body:not(.reveal) .secret .v::after { content: "隠されている"; color: var(--muted); }
-  .note { font-size: 13px; color: var(--muted); }
-  .extras { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px; margin-top: 12px; }
-  .extras .title { font-weight: 700; margin-right: 4px; }
-  .extras button.attack { border-color: #fca5a5; color: var(--bad); }
-  .extras button.link { border-color: #c4b5fd; color: var(--secret); }
-  .linkbox { border: 2px solid var(--ok); background: var(--ok-bg); border-radius: 12px; padding: 12px 16px; }
-  .linkbox h2 { margin: 0 0 6px; font-size: 15px; color: var(--ok); }
-  .linkbox .kv { grid-template-columns: 170px 1fr; }
+  .note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .legend { font-size: 13px; color: var(--muted); margin: -4px 0 0; padding: 0 4px; }
+  .legend b { color: var(--ink); font-weight: 600; }
+  .actor .role b { color: var(--ink); font-weight: 600; }
+  .limit { margin-top: 12px; padding: 10px 12px; border-left: 4px solid var(--warn); background: var(--warn-bg); border-radius: 0 8px 8px 0; font-size: 13px; color: #7c2d12; }
+
+  .linkbox { border: 2px solid var(--ok); background: var(--ok-bg); border-radius: 12px; padding: 12px 16px; animation: pop .25s ease-out; }
+  .linkbox h3 { margin: 0 0 6px; font-size: 15px; color: var(--ok); }
+  .linkbox .kv { grid-template-columns: 240px 1fr; }
   .linkbox.linked { border-color: var(--bad); background: var(--bad-bg); }
-  .linkbox.linked h2 { color: var(--bad); }
-  .linkbox .same { color: var(--bad); font-weight: 700; }
+  .linkbox.linked h3 { color: var(--bad); }
+  .linkbox.linked .v { color: var(--bad); font-weight: 700; }
   @keyframes pop { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  @media (max-width: 1080px) { .flow { grid-template-columns: 1fr; } .arrow { display: none; } .two { grid-template-columns: 1fr; } .cards { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <header>
   <h1>zkAgent Passport</h1>
-  <span class="sub">個別の評価・取引先・合計点を見せずに「条件を満たしている」ことだけを証明する</span>
+  <span class="sub">AI エージェントのための、選択的開示による評判クレデンシャル</span>
   <div class="stats">
     <span>制約数 <b id="stConstraints">–</b></span>
     <span>証明 <b id="stProve">–</b></span>
@@ -95,82 +144,159 @@
 </header>
 
 <main>
-  <section class="controls">
-    <div>
-      <label>Provider A / B / C の評価（1〜5）</label>
-      <div class="group">
-        <select id="rA"></select><select id="rB"></select><select id="rC"></select>
+  <section class="card intro">
+    <h2>旅行予約を代行する AI エージェントに、予約サービスは仕事を任せてよいか？</h2>
+    <p class="lead">
+      予約サービスが知りたいのは<b>「他所で積んだ取引の実績が十分か」だけ</b>。エージェントが見せたくないのは<b>「どこと取引し、何点を付けられ、合計いくつか」</b>。
+      この板挟みを、ZK 証明と秘密分散で解きます。ボタンを押すと、その問いに対して本物のプロトコルが 5 者のあいだで走り、下に結果が出ます。
+    </p>
+    <p class="ask">6 つの問いに、その場で答えます</p>
+    <div class="cards" id="scenarioRow"></div>
+    <div class="caption" id="caption"></div>
+  </section>
+
+  <section class="card flow" id="flow">
+    <div class="actor" data-actor="providers"><div class="name">Task Provider</div><div class="role">仕事の相手。評価に Ed25519 署名<br><b>このデモでは 3 社</b>（A / B / C）</div></div>
+    <div class="arrow" data-arrow="providers-gateway">→</div>
+    <div class="actor" data-actor="gateway"><div class="name">Input Gateway</div><div class="role">6 つの検査を通し<br>評価を Committee の 3 ノードへ分割</div></div>
+    <div class="arrow" data-arrow="gateway-committee">→</div>
+    <div class="actor" data-actor="committee"><div class="name">Committee</div><div class="role">2-of-3 で証明書に署名<br><b>3 ノード固定</b>（各ノードは share を 1 つだけ）</div></div>
+    <div class="arrow" data-arrow="committee-agent">→</div>
+    <div class="actor" data-actor="agent"><div class="name">Agent</div><div class="role">証明書の持ち主<br>証明書は渡さず証明だけ作る</div></div>
+    <div class="arrow" data-arrow="agent-service">⇄</div>
+    <div class="actor" data-actor="service"><div class="name">Service</div><div class="role">Policy と nonce を出し<br>5 つの検査で検証</div></div>
+  </section>
+
+  <p class="legend">この図に「3」が 2 回出ますが、別物です。<b>Task Provider の 3</b> はこのデモの社数で、プロトコル上は何社でもかまいません。<b>Committee の 3</b> は回路が決めた固定値で、証明書は 3 ノードのうち 2 つの署名（2-of-3）で成立し、評価もこの 3 ノードへ 1 つずつ share として分かれます。</p>
+
+  <div class="verdict idle" id="verdict">上の問いを 1 つ押すと、5 者のあいだで何が起きるかが 6 ステップで再生されます</div>
+
+  <nav class="tabs">
+    <button class="tab active" data-pane="steps">プロトコルの流れ</button>
+    <button class="tab" data-pane="panels">Service から何が見えるか<span class="dot" id="paneDot" hidden></span></button>
+    <label class="toggle"><input id="reveal" type="checkbox"> 観客向けに隠し値を開く</label>
+  </nav>
+
+  <section id="paneSteps">
+    <div class="steps" id="steps"></div>
+    <p class="note">各ステップは本物の処理です（Ed25519 署名、Poseidon2 コミットメント、加算的秘密分散、回路内 EdDSA、Groth16 証明）。長いハッシュは先頭だけ表示しています。</p>
+  </section>
+
+  <section id="panePanels" hidden>
+    <div class="two">
+      <div class="panel visible">
+        <h2>Service が知ること</h2>
+        <p class="sub">受け取るのは Proof と公開入力 20 個だけ。証明書は届きません。</p>
+        <div class="kv" id="visible"></div>
+        <p class="empty" id="visibleEmpty">上の問いを 1 つ実行すると出ます。</p>
+        <div class="limit" id="limitNote" hidden></div>
       </div>
-    </div>
-    <div>
-      <label>Policy: 閾値 / 最低件数</label>
-      <div class="group"><input id="threshold" type="number" min="1" max="25"><input id="minCount" type="number" min="1" max="10"></div>
-    </div>
-    <div>
-      <label>現在の Manifest: modelId / permissionScope（発行時: <span id="certifiedModel"></span> / <span id="certifiedScope"></span>）</label>
-      <div class="group"><input id="modelId" class="wide" type="text"><input id="scope" class="wide" type="text"></div>
-    </div>
-    <div>
-      <label>Policy の許可リスト（modelId、カンマ区切り。空なら変更不可）</label>
-      <input id="allowedModels" class="wide" type="text">
-    </div>
-    <label class="toggle" style="padding-bottom:8px"><input id="reveal" type="checkbox"> 観客向けに隠し値を開く</label>
-    <div class="buttons">
-      <button id="replay" disabled>同じ証明をもう一度送る（Replay）</button>
-      <button id="reset">初期値に戻す</button>
-      <button id="run" class="primary">実行</button>
+      <div class="panel hidden-panel">
+        <h2>Service が決して知らないこと</h2>
+        <p class="sub">ZK 証明と秘密分散で、これらは Service に渡りません。</p>
+        <div class="kv" id="hidden"></div>
+        <p class="empty" id="hiddenEmpty">上の問いを 1 つ実行すると出ます。</p>
+        <p class="note">上の「観客向けに隠し値を開く」で、この場にいる人にだけ中身を見せられます。</p>
+      </div>
     </div>
   </section>
 
-  <div>
-    <section class="flow" id="flow">
-      <div class="actor" data-actor="providers"><div class="name">Task Provider</div><div class="role">A / B / C（登録済み）</div></div>
-      <div class="arrow" data-arrow="providers-gateway">→</div>
-      <div class="actor" data-actor="gateway"><div class="name">Input Gateway</div><div class="role">検査と秘密分散</div></div>
-      <div class="arrow" data-arrow="gateway-committee">→</div>
-      <div class="actor" data-actor="committee"><div class="name">Committee ×3</div><div class="role">部分和と 2-of-3 署名</div></div>
-      <div class="arrow" data-arrow="committee-agent">→</div>
-      <div class="actor" data-actor="agent"><div class="name">Agent</div><div class="role">agentSecret + Manifest</div></div>
-      <div class="arrow" data-arrow="agent-service">⇄</div>
-      <div class="actor" data-actor="service"><div class="name">Service</div><div class="role">Policy と検証</div></div>
-    </section>
-    <p class="note">各ステップは本物の処理です（Ed25519 署名、Poseidon2 コミットメント、加算的秘密分散、Groth16 証明）。ハッシュは先頭だけ表示しています。</p>
-    <section class="extras">
-      <span class="title">攻撃者モード（Gateway へ提出）</span>
-      <button class="attack" data-attack="forged">評価を書き換えた Receipt</button>
-      <button class="attack" data-attack="unregistered">未登録 Provider の Receipt</button>
-      <button class="attack" data-attack="duplicate">同じ Receipt を再提出</button>
-      <button class="attack" data-attack="same-issuer">同一 Provider の 2 件目</button>
-      <button class="attack" data-attack="expired">期限切れ Receipt</button>
-      <span class="title" style="margin-left:auto">リンク不可を確かめる</span>
-      <button class="link" id="otherService">別の Service で実行</button>
-    </section>
-    <section class="steps" id="steps"></section>
-  </div>
-
-  <aside>
-    <div class="verdict idle" id="verdict">「実行」を押すと 6 ステップを順に再生します</div>
-    <div class="panel visible">
-      <h2>Service が見るもの</h2>
-      <div class="kv" id="visible"></div>
+  <details class="card more">
+    <summary>手動で試す（条件の変更・攻撃者モード・別の Service）</summary>
+    <div class="more-body">
+      <div>
+        <h3>条件を変える</h3>
+        <p class="hint">上の 6 つの問いに無い失敗（閾値未達、件数不足、strict な Policy）も、ここから作れます。</p>
+        <div class="fields">
+          <div>
+            <label>Provider A / B / C の評価（1〜5。合計が閾値以上なら通る）</label>
+            <div class="group"><select id="rA"></select><select id="rB"></select><select id="rC"></select></div>
+          </div>
+          <div>
+            <label>Service の Policy: 閾値 / 最低件数</label>
+            <div class="group"><input id="threshold" type="number" min="1" max="25"><input id="minCount" type="number" min="1" max="10"></div>
+          </div>
+          <div>
+            <label>Agent の<b>現在の</b> Manifest: modelId / permissionScope（発行時: <span id="certifiedModel"></span> / <span id="certifiedScope"></span>）</label>
+            <div class="group"><input id="modelId" class="wide" type="text"><input id="scope" class="wide" type="text"></div>
+          </div>
+          <div>
+            <label>Policy が許す modelId（カンマ区切り。空なら一切変更不可）</label>
+            <input id="allowedModels" class="wide" type="text">
+          </div>
+          <div class="row" style="margin-left:auto">
+            <button id="reset">初期値に戻す</button>
+            <button id="replay" disabled>同じ証明を再送</button>
+            <button id="run" class="primary">この条件で実行</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3>攻撃者モード（Gateway へ不正な Receipt を提出）</h3>
+        <p class="hint">Sybil や Review Farming は暗号では防げません。Gateway の 6 検査のどれが止めるかが出ます。</p>
+        <div class="row">
+          <button class="attack" data-attack="forged">評価を書き換えた Receipt</button>
+          <button class="attack" data-attack="unregistered">未登録 Provider の Receipt</button>
+          <button class="attack" data-attack="duplicate">同じ Receipt を再提出</button>
+          <button class="attack" data-attack="same-issuer">同一 Provider の 2 件目</button>
+          <button class="attack" data-attack="expired">期限切れ Receipt</button>
+          <button class="link" id="otherService" style="margin-left:auto">別の Service で実行</button>
+        </div>
+      </div>
     </div>
-    <div class="linkbox" id="linkbox" hidden>
-      <h2 id="linktitle">Service 間でリンクできない</h2>
-      <div class="kv" id="linkrows"></div>
-      <p class="note" id="linknote"></p>
-    </div>
-    <div class="panel hidden-panel">
-      <h2>Service に見えないもの</h2>
-      <div class="kv" id="hidden"></div>
-      <p class="note">ZK 証明と秘密分散で、これらは Service に渡らない。上のチェックで観客向けにだけ開ける。</p>
-    </div>
-  </aside>
+  </details>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let defaults = null;
+let busy = false;
+
+const SCENARIOS = [
+  {
+    key: "normal",
+    title: "① 中身を見せずに合格する",
+    question: "合計点も取引先も渡さずに、条件を満たしていると示せるか？",
+    caption: "答え: できる。サービスが受け取るのは証明 1 個と公開入力 20 個だけで、合計点（14）も取引先の名前も件数も入っていません。何が渡って何が渡らなかったかは「Service から何が見えるか」タブで対比できます。",
+    set: {}, then: "run",
+  },
+  {
+    key: "farming",
+    title: "② 自作自演の高評価を防ぐ",
+    question: "同じ取引先が何度も高評価を付けたら、実績を水増しできるか？",
+    caption: "答え: できない。ただし暗号の力ではなく、Gateway が「同じ取引先・同じ期間で 2 件目」を弾いています。Sybil や Review Farming そのものは暗号では解けない、という限界を正直に見せる場面です。",
+    then: "attack:same-issuer",
+  },
+  {
+    key: "model",
+    title: "③ モデルを更新しても実績は残る",
+    question: "新しいモデルに載せ替えたエージェントは、前の実績を使えるか？",
+    caption: "答え: 使える。サービスの Policy が許可リストに載せたモデル（gpt-demo-v2）なら、証明書の発行時と違う構成でも認可されます。実績はエージェント個体ではなく「宣言した構成」に付く、という主張の表側です。",
+    set: { modelId: "gpt-demo-v2" }, then: "run",
+  },
+  {
+    key: "scope",
+    title: "④ 権限をこっそり広げると失格",
+    question: "宣言していた権限の範囲を勝手に広げたら、実績はそのまま通用するか？",
+    caption: "答え: 通用しない。permissionScope を travel-booking-admin に広げると、エージェント自身が成立する証明を作れません。サービスには何も届かないまま終わります。主張の裏側です。",
+    set: { scope: "travel-booking-admin" }, then: "run",
+  },
+  {
+    key: "replay",
+    title: "⑤ 証明のコピーは使えない",
+    question: "一度通った証明を拾ってきて、もう一度使えるか？",
+    caption: "答え: 使えない。ZK 証明そのものは今も有効ですが、サービスが出した使い捨て nonce が消費済みなので弾かれます。ZK があっても Replay は別に防ぐ必要がある、という話です。",
+    set: {}, then: "run+replay",
+  },
+  {
+    key: "link",
+    title: "⑥ 2 つのサービスが突き合わせても追えない",
+    question: "別々のサービスが記録を持ち寄ったら、同じエージェントだと分かるか？",
+    caption: "答え: 分からない。両者が受け取る nullifier は Hash(agentSecret, verifierId) なので、サービスごとに無関係な値になります。流れの末尾に 2 つの値を並べます。",
+    set: {}, then: "run+other",
+  },
+];
 
 function fillSelect(sel, value) {
   sel.innerHTML = "";
@@ -185,6 +311,21 @@ async function loadDefaults() {
   defaults = await (await fetch("/api/defaults")).json();
   $("stConstraints").textContent = defaults.constraints.toLocaleString();
   resetControls();
+  buildScenarios();
+}
+
+function buildScenarios() {
+  const row = $("scenarioRow");
+  row.innerHTML = "";
+  for (const s of SCENARIOS) {
+    const b = document.createElement("button");
+    b.className = "sc"; b.dataset.key = s.key;
+    const t = document.createElement("span"); t.className = "t"; t.textContent = s.title;
+    const q = document.createElement("span"); q.className = "q"; q.textContent = s.question;
+    b.appendChild(t); b.appendChild(q);
+    b.addEventListener("click", () => runScenario(s));
+    row.appendChild(b);
+  }
 }
 
 function resetControls() {
@@ -221,13 +362,32 @@ function collect() {
   };
 }
 
+// selectPane switches between the protocol trace and the disclosure panels.
+function selectPane(name) {
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.pane === name));
+  $("paneSteps").hidden = name !== "steps";
+  $("panePanels").hidden = name !== "panels";
+  if (name === "panels") $("paneDot").hidden = true;
+}
+
 function clearBoard() {
   $("steps").innerHTML = "";
-  $("linkbox").hidden = true;
-  $("linkbox").classList.remove("linked");
   document.querySelectorAll(".actor").forEach((a) => a.classList.remove("active", "rejected", "done"));
   document.querySelectorAll(".arrow").forEach((a) => a.classList.remove("active"));
   setVerdict("idle", "再生中…");
+}
+
+// setCaption bolds the leading answer sentence of a scenario caption.
+function setCaption(text) {
+  const el = $("caption");
+  el.innerHTML = "";
+  if (!text) return;
+  const i = text.indexOf("。");
+  if (i < 0) { el.textContent = text; return; }
+  const b = document.createElement("b");
+  b.textContent = text.slice(0, i + 1);
+  el.appendChild(b);
+  el.appendChild(document.createTextNode(text.slice(i + 1)));
 }
 
 function setVerdict(kind, text, reason) {
@@ -242,7 +402,7 @@ function kvRows(container, rows) {
   for (const r of rows || []) {
     const k = document.createElement("div"); k.className = "k"; k.textContent = r.key;
     const v = document.createElement("div"); v.className = "v"; v.textContent = r.value;
-    if (r.secret) { k.classList.add("secret"); v.classList.add("secret"); const wrap = document.createElement("span"); wrap.className = "v"; wrap.textContent = r.value; v.textContent = ""; v.className = "secret"; v.appendChild(wrap); }
+    if (r.secret) { k.classList.add("secret"); const wrap = document.createElement("span"); wrap.className = "v"; wrap.textContent = r.value; v.textContent = ""; v.className = "secret"; v.appendChild(wrap); }
     container.appendChild(k); container.appendChild(v);
   }
 }
@@ -251,6 +411,7 @@ function renderStep(step) {
   const el = document.createElement("div");
   el.className = "step " + (step.status === "ok" ? "" : step.status);
   const h = document.createElement("h3"); h.textContent = step.title; el.appendChild(h);
+  if (step.gloss) { const g = document.createElement("p"); g.className = "gloss"; g.textContent = step.gloss; el.appendChild(g); }
   if (step.lines && step.lines.length) {
     const kv = document.createElement("div"); kv.className = "kv"; kvRows(kv, step.lines); el.appendChild(kv);
   }
@@ -288,6 +449,19 @@ function highlight(step) {
   }
 }
 
+// fillPanels stores the disclosure contrast on the second tab and flags it
+// as updated, so the trace stays the only thing on screen while it plays.
+function fillPanels(trace) {
+  kvRows($("visible"), trace.visible);
+  kvRows($("hidden"), trace.hidden);
+  $("visibleEmpty").hidden = (trace.visible || []).length > 0;
+  $("hiddenEmpty").hidden = (trace.hidden || []).length > 0;
+  const limit = $("limitNote");
+  limit.hidden = !trace.limitation;
+  limit.textContent = trace.limitation || "";
+  $("paneDot").hidden = !$("panePanels").hidden;
+}
+
 async function play(trace) {
   for (const step of trace.steps) {
     highlight(step);
@@ -299,91 +473,117 @@ async function play(trace) {
     if (trace.stats.verifyTook) $("stVerify").textContent = trace.stats.verifyTook;
     if (trace.stats.proofBytes) $("stBytes").textContent = trace.stats.proofBytes + " B";
   }
-  kvRows($("visible"), trace.visible);
-  kvRows($("hidden"), trace.hidden);
+  fillPanels(trace);
   if (trace.outcome === "authorized") {
-    setVerdict("authorized", "AUTHORIZED — 高権限タスクを許可");
+    setVerdict("authorized", "AUTHORIZED", "予約サービスはこのエージェントに仕事を任せる。渡ったのは「条件を満たしている」という事実だけ");
     document.querySelector('.actor[data-actor="service"]').classList.add("done");
   } else {
-    setVerdict("rejected", "REJECTED", trace.reason || "");
+    setVerdict("rejected", "REJECTED", trace.reason || "条件を満たしていないので、仕事は任せられない");
   }
 }
 
 async function run() {
-  $("run").disabled = true; $("replay").disabled = true;
   clearBoard();
-  try {
-    const res = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(collect()) });
-    if (!res.ok) throw new Error(await res.text());
-    const trace = await res.json();
-    await play(trace);
-    $("replay").disabled = trace.outcome !== "authorized";
-  } catch (e) {
-    setVerdict("rejected", "エラー: " + e.message);
-  } finally {
-    $("run").disabled = false;
-  }
+  const res = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(collect()) });
+  if (!res.ok) throw new Error(await res.text());
+  const trace = await res.json();
+  await play(trace);
+  $("replay").disabled = trace.outcome !== "authorized";
+  return trace;
 }
 
 async function replay() {
-  $("run").disabled = true; $("replay").disabled = true;
   document.querySelectorAll(".actor").forEach((a) => a.classList.remove("active", "rejected"));
-  try {
-    const res = await fetch("/api/replay", { method: "POST" });
-    if (!res.ok) throw new Error(await res.text());
-    const trace = await res.json();
-    await play(trace);
-  } catch (e) {
-    setVerdict("rejected", "エラー: " + e.message);
-  } finally {
-    $("run").disabled = false;
-  }
+  const res = await fetch("/api/replay", { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  await play(await res.json());
 }
 
 async function attack(kind) {
   document.querySelectorAll(".actor").forEach((a) => a.classList.remove("active", "rejected"));
-  try {
-    const res = await fetch("/api/attack", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    highlight(data.step);
-    renderStep(data.step);
-  } catch (e) {
-    setVerdict("rejected", "エラー", e.message);
+  const res = await fetch("/api/attack", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  highlight(data.step);
+  renderStep(data.step);
+  if (data.step.status === "rejected") {
+    setVerdict("rejected", "Gateway が弾いた", data.reason || "");
+  } else {
+    setVerdict("authorized", "Gateway が受理した（想定外）");
   }
 }
 
+// otherService appends the nullifier comparison right where it happens, so
+// the conclusion sits in the trace instead of a separate panel.
 async function otherService() {
   document.querySelectorAll(".actor").forEach((a) => a.classList.remove("active", "rejected"));
+  const res = await fetch("/api/other-service", { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  highlight(data.step);
+  renderStep(data.step);
+
+  const box = document.createElement("div");
+  box.className = "linkbox" + (data.linkable ? " linked" : "");
+  const h = document.createElement("h3");
+  h.textContent = data.linkable ? "同じ値が見えている（想定外）" : "2 つの Service はこの Agent を結び付けられない";
+  box.appendChild(h);
+  const kv = document.createElement("div"); kv.className = "kv";
+  kvRows(kv, data.step.lines.filter((l) => l.key.includes("nullifier")));
+  box.appendChild(kv);
+  const note = document.createElement("p"); note.className = "note";
+  note.textContent = (data.linkable ? "同じ値。" : "別々の値。") + data.note;
+  box.appendChild(note);
+  $("steps").appendChild(box);
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// guard wraps any action so only one runs at a time and errors land in the verdict.
+async function guard(fn) {
+  if (busy) return;
+  busy = true;
+  $("run").disabled = true; $("replay").disabled = true;
+  document.querySelectorAll("button.sc, button.attack, button.link").forEach((b) => (b.disabled = true));
   try {
-    const res = await fetch("/api/other-service", { method: "POST" });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    highlight(data.step);
-    renderStep(data.step);
-    const box = $("linkbox");
-    box.hidden = false;
-    const rows = data.step.lines.filter((l) => l.key.includes("nullifier"));
-    kvRows($("linkrows"), rows);
-    box.classList.toggle("linked", data.linkable);
-    if (data.linkable) {
-      $("linktitle").textContent = "同じ値が見えている（想定外）";
-      $("linkrows").querySelectorAll(".v").forEach((v) => v.classList.add("same"));
-      $("linknote").textContent = "同じ値。" + data.note;
-    } else {
-      $("linktitle").textContent = "Service 間でリンクできない";
-      $("linknote").textContent = "別々の値。" + data.note;
-    }
+    await fn();
   } catch (e) {
     setVerdict("rejected", "エラー", e.message);
+  } finally {
+    busy = false;
+    $("run").disabled = false;
+    document.querySelectorAll("button.sc, button.attack, button.link").forEach((b) => (b.disabled = false));
   }
 }
 
-document.querySelectorAll("button.attack").forEach((b) => b.addEventListener("click", () => attack(b.dataset.attack)));
-$("otherService").addEventListener("click", otherService);
-$("run").addEventListener("click", run);
-$("replay").addEventListener("click", replay);
-$("reset").addEventListener("click", resetControls);
+async function runScenario(s) {
+  document.querySelectorAll("button.sc").forEach((b) => b.classList.toggle("active", b.dataset.key === s.key));
+  setCaption(s.caption);
+  selectPane("steps");
+  await guard(async () => {
+    if (s.set) {
+      resetControls();
+      if (s.set.modelId) $("modelId").value = s.set.modelId;
+      if (s.set.scope) $("scope").value = s.set.scope;
+      markManifest();
+    }
+    if (s.then === "run") { await run(); return; }
+    if (s.then === "run+replay") { await run(); await sleep(600); await replay(); return; }
+    if (s.then === "run+other") { await run(); await sleep(600); await otherService(); return; }
+    if (s.then.startsWith("attack:")) { clearBoard(); await attack(s.then.slice(7)); return; }
+  });
+}
+
+function clearScenario() {
+  document.querySelectorAll("button.sc").forEach((b) => b.classList.remove("active"));
+  setCaption("");
+}
+
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => selectPane(t.dataset.pane)));
+document.querySelectorAll("button.attack").forEach((b) => b.addEventListener("click", () => { clearScenario(); selectPane("steps"); guard(() => attack(b.dataset.attack)); }));
+$("otherService").addEventListener("click", () => { clearScenario(); selectPane("steps"); guard(otherService); });
+$("run").addEventListener("click", () => { clearScenario(); selectPane("steps"); guard(run); });
+$("replay").addEventListener("click", () => { clearScenario(); selectPane("steps"); guard(replay); });
+$("reset").addEventListener("click", () => { clearScenario(); resetControls(); });
 $("modelId").addEventListener("input", markManifest);
 $("scope").addEventListener("input", markManifest);
 $("reveal").addEventListener("change", (e) => document.body.classList.toggle("reveal", e.target.checked));
