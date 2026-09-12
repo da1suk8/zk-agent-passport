@@ -727,7 +727,7 @@ function note(s, y, text, color) {
     x: M, y: 5.62, w: CW, h: 0.4, isTextBox: true, margin: 0,
     fontFace: FM, fontSize: 15, color: WHITE, align: "center",
   });
-  s.addText("go run ./cmd/web　でブラウザデモ　·　go test ./...　で 31 ケース　·　go run ./cmd/bench　で計測", {
+  s.addText("go run ./cmd/web　でブラウザデモ　·　go test ./...　で 32 ケース　·　go run ./cmd/bench　で計測", {
     x: M, y: 6.05, w: CW, h: 0.4, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 12, color: MUTED, align: "center",
   });

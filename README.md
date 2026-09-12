@@ -146,7 +146,7 @@ go test ./...
 go run ./cmd/bench -n 20
 ```
 
-Thirty-one cases cover a successful authorization, permitted manifest updates,
+Thirty-two cases cover a successful authorization, permitted manifest updates,
 and every rejection the protocol is meant to produce: a score below the
 threshold, too few receipts, someone else's secret, a certificate that expires
 before the proof would, a single committee signature, a signature from outside
