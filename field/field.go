@@ -42,7 +42,9 @@ func FromInt(v int64) Element {
 	return FromBig(big.NewInt(v))
 }
 
-// Random returns a uniformly random non-zero element.
+// Random returns a uniformly random non-zero element. It encodes through
+// FromBig rather than fr.Element.String, which renders q-k as "-k" for k
+// below 65536 and would not be a canonical element.
 func Random() (Element, error) {
 	for {
 		var e fr.Element
@@ -50,7 +52,7 @@ func Random() (Element, error) {
 			return "", fmt.Errorf("field: random element: %w", err)
 		}
 		if !e.IsZero() {
-			return e.String(), nil
+			return FromBig(e.BigInt(new(big.Int))), nil
 		}
 	}
 }
