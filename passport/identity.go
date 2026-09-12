@@ -16,12 +16,6 @@ type Identity struct {
 	privateKey ed25519.PrivateKey
 }
 
-// PublicIdentity is the verification half of an Identity.
-type PublicIdentity struct {
-	NodeID    string
-	PublicKey ed25519.PublicKey
-}
-
 // NewIdentity generates a fresh Ed25519 key pair.
 func NewIdentity(nodeID string) (*Identity, error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -29,11 +23,6 @@ func NewIdentity(nodeID string) (*Identity, error) {
 		return nil, fmt.Errorf("identity %s: %w", nodeID, err)
 	}
 	return &Identity{NodeID: nodeID, PublicKey: pub, privateKey: priv}, nil
-}
-
-// Public returns the shareable half of the identity.
-func (id *Identity) Public() PublicIdentity {
-	return PublicIdentity{NodeID: id.NodeID, PublicKey: id.PublicKey}
 }
 
 // Sign returns a base64 Ed25519 signature over msg.
