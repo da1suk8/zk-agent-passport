@@ -249,19 +249,21 @@ func prove(dir, artifacts string) error {
 }
 
 // loadAgent reads the passport file and lets environment variables override
-// the secret, as a Lambda-style deployment would inject it.
+// it, as a Lambda-style deployment would inject the identity. AGENT_SECRET
+// and PASSPORT_SALT override as a pair: the passport commitment is
+// Commit(secret, salt), so pairing an injected secret with the stored salt
+// would quietly produce a different agent than the one that was certified.
 func loadAgent(dir string) (*passport.Agent, error) {
+	secret, salt := os.Getenv("AGENT_SECRET"), os.Getenv("PASSPORT_SALT")
+	if (secret == "") != (salt == "") {
+		return nil, errors.New("AGENT_SECRET and PASSPORT_SALT must be set together")
+	}
 	var p store.Passport
-	if err := store.Load(dir, store.PassportName, &p); err != nil {
-		if secret := os.Getenv("AGENT_SECRET"); secret == "" {
-			return nil, fmt.Errorf("no passport; run `agent init` first: %w", err)
-		}
+	if err := store.Load(dir, store.PassportName, &p); err != nil && secret == "" {
+		return nil, fmt.Errorf("no passport; run `agent init` first: %w", err)
 	}
-	if secret := os.Getenv("AGENT_SECRET"); secret != "" {
-		p.AgentSecret = secret
-	}
-	if salt := os.Getenv("PASSPORT_SALT"); salt != "" {
-		p.PassportSalt = salt
+	if secret != "" {
+		p.AgentSecret, p.PassportSalt = secret, salt
 	}
 	if p.Manifest == (passport.Manifest{}) {
 		p.Manifest = demo.DefaultManifest
