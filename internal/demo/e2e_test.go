@@ -257,7 +257,7 @@ func TestTwoServicesCannotLinkTheSameAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	other := verifier.New(sys, w.Keyset, "travel-insurance-service")
-	chB, err := other.IssueChallenge(Now)
+	chB, err := other.IssueChallenge(Now, w.Policy.PolicyHash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,5 +387,31 @@ func TestVerifierRejectsReplayedNonce(t *testing.T) {
 	}
 	if _, err := w.Access(ch, pkg); !errors.Is(err, verifier.ErrNonceConsumed) {
 		t.Fatalf("expected consumed nonce, got %v", err)
+	}
+}
+
+func TestVerifierRejectsProofBuiltForAnotherPolicy(t *testing.T) {
+	w := newWorld(t)
+	// A policy the agent can satisfy, but not the one the service challenged
+	// for: the threshold is lower than the world's.
+	looser, err := w.StricterPolicy(RequiredThreshold - 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if looser.PolicyHash == w.Policy.PolicyHash {
+		t.Fatal("test setup: the two policies should differ")
+	}
+	ch, err := w.NewChallenge() // issued for w.Policy
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := w.ProveWith(ch, looser, w.Issued)
+	if err != nil {
+		t.Fatalf("the agent should be able to prove the looser policy: %v", err)
+	}
+	if _, err := w.Verifier.VerifyAccess(verifier.AccessRequest{
+		Policy: looser, Challenge: ch, Proof: pkg, Now: Now,
+	}); !errors.Is(err, verifier.ErrPolicyNotChallenged) {
+		t.Fatalf("expected the nonce to be bound to the challenged policy, got %v", err)
 	}
 }

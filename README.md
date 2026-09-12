@@ -137,15 +137,17 @@ repeated runs.
 go test ./...
 ```
 
-Twenty-seven cases cover a successful authorization, permitted manifest
+Twenty-nine cases cover a successful authorization, permitted manifest
 updates, and rejections for: a score below the threshold, too few receipts,
 proving with someone else's secret, a certificate that expires before the
 proof would, a single committee signature, a signature from outside the
 keyset, an immutable manifest field changed, a manifest value outside the
 allowlist, any change under a strict policy, a policy for a manifest the
 agent cannot open, forged, unregistered, duplicate and same-issuer receipts,
-an expired proof, a tampered nullifier, a proof for another challenge, a
-challenge the verifier did not issue, and a replayed nonce.
+a second aggregation of a batch already certified, an expired proof, a
+tampered nullifier, a proof for another challenge, a proof built for a policy
+the verifier did not challenge for, a challenge the verifier did not issue,
+and a replayed nonce.
 
 Two tests pin the privacy claims directly: one proves to two services and
 checks that the nullifiers differ and that no certificate value appears in
@@ -285,8 +287,9 @@ zero, which reduces to plain equality.
 ## Replay protection
 
 A proof is a transferable object, so the nonce alone is not enough. The
-verifier issues the nonce, records it as pending, accepts only nonces it
-issued, and consumes it on success. The proof is bound to `verifierId`,
+verifier issues the nonce, records it as pending together with the hash of
+the policy it published alongside it, accepts only nonces it issued for that
+policy, and consumes it on success. The proof is bound to `verifierId`,
 `nonce`, `proofExpiresAt` and `policyHash`, which rejects reuse at another
 service, under another policy, after expiry, or a second time.
 
@@ -295,12 +298,14 @@ service, under another policy, after expiry, or a second time.
 - Only the gateway can produce a `ValidatedReceipt`, and the committee
   aggregates nothing else, so an unchecked receipt cannot reach a score.
 - Only the verifier issues challenges, and it accepts only nonces it issued,
-  so a proof cannot be bound to a self-made nonce.
+  so a proof cannot be bound to a self-made nonce. A nonce carries the policy
+  it was issued for, so a proof made for some weaker policy cannot be
+  presented against this verifier's challenge either.
 - The verifier and the gateway own the order of their checks and report each
   outcome; user interfaces render that report instead of re-deriving it.
 - With the certificate hidden, the verifier's own checks reduce to five: the
   proof is unexpired, the policy hash matches the policy, the nonce was
-  issued here, the nonce is unused, and the proof verifies. Certificate
+  issued here for this policy, the nonce is unused, and the proof verifies. Certificate
   expiry, the committee quorum and the policy match are proven, not checked.
 
 ## Trust assumptions and non-goals

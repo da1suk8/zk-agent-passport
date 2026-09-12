@@ -207,9 +207,9 @@ func (w *World) BatchKey() string {
 	return passport.BatchKey(c.PassportCommitment, c.AgentManifestCommitment, c.TaskDomain, c.AggregationEpoch)
 }
 
-// NewChallenge asks the demo service to issue a challenge.
+// NewChallenge asks the demo service to issue a challenge for its own policy.
 func (w *World) NewChallenge() (passport.Challenge, error) {
-	return w.Verifier.IssueChallenge(Now)
+	return w.Verifier.IssueChallenge(Now, w.Policy.PolicyHash)
 }
 
 // Prove generates the agent's proof for the world's certificate and policy.

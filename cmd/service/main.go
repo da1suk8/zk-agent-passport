@@ -92,7 +92,7 @@ func challenge(dir, artifacts string, threshold, minimum int64, strict bool) err
 	if err != nil {
 		return err
 	}
-	ch, err := v.IssueChallenge(time.Now().Unix())
+	ch, err := v.IssueChallenge(time.Now().Unix(), bundle.PolicyHash)
 	if err != nil {
 		return err
 	}
