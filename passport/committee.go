@@ -25,9 +25,10 @@ const (
 
 // Committee errors.
 var (
-	ErrEmptyBatch    = errors.New("at least one receipt is required")
-	ErrBatchMismatch = errors.New("receipt does not match aggregation batch")
-	ErrKeysetSize    = errors.New("a committee keyset needs exactly three nodes")
+	ErrEmptyBatch         = errors.New("at least one receipt is required")
+	ErrBatchMismatch      = errors.New("receipt does not match aggregation batch")
+	ErrBatchAlreadyIssued = errors.New("a certificate was already issued for this aggregation batch")
+	ErrKeysetSize         = errors.New("a committee keyset needs exactly three nodes")
 )
 
 // CommitteeNode holds one additive share of every rating in a batch and
@@ -110,6 +111,12 @@ func (n *CommitteeNode) PartialSum(batchKey string) field.Element {
 		return v
 	}
 	return "0"
+}
+
+// hasBatch reports whether the node already holds shares for a batch.
+func (n *CommitteeNode) hasBatch(batchKey string) bool {
+	_, ok := n.partials[batchKey]
+	return ok
 }
 
 // CommitteePublicKey is one node's verification key.
@@ -263,6 +270,15 @@ func IssueScoreCertificate(committee []*CommitteeNode, req AggregationRequest) (
 		}
 	}
 	batchKey := BatchKey(first.PassportCommitment, first.AgentManifestCommitment, first.TaskDomain, req.AggregationEpoch)
+
+	// A batch is aggregated once. The partial sums are running totals per
+	// batch key, so a second issuance for the same key would report a score
+	// covering both rounds next to a receiptCount covering only this one.
+	for _, node := range committee {
+		if node.hasBatch(batchKey) {
+			return IssuedCertificate{}, fmt.Errorf("%w: %s", ErrBatchAlreadyIssued, batchKey)
+		}
+	}
 
 	// Secret-share every rating; node i only ever receives share i.
 	for _, v := range req.Receipts {
