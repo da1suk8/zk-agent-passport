@@ -200,7 +200,9 @@ func assertGreaterEqual32(api frontend.API, a, b frontend.Variable) {
 }
 
 // selectKey picks keyset entry index (0..CommitteeSize-1) with a binary
-// decomposition of the index, and rejects indices out of range.
+// decomposition of the index, and rejects indices out of range. The two index
+// bits and the "index != 3" check are written for CommitteeSize == 3; both
+// have to be widened if the keyset ever grows.
 func selectKey(api frontend.API, keys [CommitteeSize]eddsa.PublicKey, index frontend.Variable) eddsa.PublicKey {
 	bits := api.ToBinary(index, 2)
 	api.AssertIsEqual(api.Mul(bits[0], bits[1]), 0) // index != 3

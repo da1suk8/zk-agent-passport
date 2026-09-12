@@ -33,7 +33,8 @@ var (
 
 // CommitteeNode holds one additive share of every rating in a batch and
 // signs certificates with an EdDSA key on BabyJubJub, which the passport
-// circuit can verify.
+// circuit can verify. A node is not safe for concurrent use: its partial sums
+// are a plain map.
 type CommitteeNode struct {
 	NodeID    string
 	PublicKey []byte // compressed EdDSA public key

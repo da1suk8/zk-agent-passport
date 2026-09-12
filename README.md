@@ -137,7 +137,7 @@ repeated runs.
 go test ./...
 ```
 
-Twenty-nine cases cover a successful authorization, permitted manifest
+Thirty-one cases cover a successful authorization, permitted manifest
 updates, and rejections for: a score below the threshold, too few receipts,
 proving with someone else's secret, a certificate that expires before the
 proof would, a single committee signature, a signature from outside the
@@ -148,6 +148,10 @@ a second aggregation of a batch already certified, an expired proof, a
 tampered nullifier, a proof for another challenge, a proof built for a policy
 the verifier did not challenge for, a challenge the verifier did not issue,
 and a replayed nonce.
+
+Two more pin the field encoding: every element this codebase hands out stays
+in canonical decimal form, including the values just below the modulus that
+gnark-crypto would otherwise render as small negative numbers.
 
 Two tests pin the privacy claims directly: one proves to two services and
 checks that the nullifiers differ and that no certificate value appears in
@@ -331,6 +335,13 @@ and trusted.
   work composes with this rather than competing with it.
 - The Groth16 setup here is single-party and for development only.
 - Certificate revocation and real threshold signatures are not implemented.
+- The verifier's nonce bookkeeping only grows: a pending nonce that is never
+  used is never swept, and a consumed one is remembered forever. Dropping
+  entries past `proofExpiresAt` would be sound, because `proof-unexpired`
+  rejects an expired proof before the nonce checks run.
+- The protocol types are not safe for concurrent use, and `cmd/service`
+  rewrites its state file in place rather than atomically. The browser demo
+  serializes requests with a mutex instead of making the packages concurrent.
 
 Circuit-bound identifiers use finite-field encodings, so the demo uses
 numeric identifiers for `taskDomain`, `aggregationEpoch` and keyset versions;

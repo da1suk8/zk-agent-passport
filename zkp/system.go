@@ -158,7 +158,9 @@ func Setup() (*System, error) {
 
 // LoadOrSetup reuses keys cached under dir, or runs Setup and caches them.
 // The cache file names carry the circuit's constraint and public-input
-// counts, so keys generated for an older circuit are never reused.
+// counts, which is enough to keep the demo from loading keys built for an
+// earlier version of this circuit. It is a development cache, not a binding:
+// two different circuits with the same counts would share a file name.
 func LoadOrSetup(dir string) (*System, error) {
 	ccs, err := Compile()
 	if err != nil {

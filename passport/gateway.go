@@ -57,7 +57,8 @@ func NewIssuerRegistry(issuers ...*Identity) IssuerRegistry {
 
 // InputGateway validates receipts before their ratings are secret-shared to
 // the committee. It sees plaintext ratings; the MPC protects ratings from the
-// committee nodes, not from the gateway.
+// committee nodes, not from the gateway. A gateway is not safe for concurrent
+// use: its duplicate bookkeeping is a plain map.
 type InputGateway struct {
 	registry        IssuerRegistry
 	usedReceiptIDs  map[string]struct{}
