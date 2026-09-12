@@ -8,6 +8,7 @@ package verifier
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/da1suk8/zk-agent-passport/field"
 	"github.com/da1suk8/zk-agent-passport/passport"
@@ -50,7 +51,8 @@ const (
 
 // Verifier is a service that gates access on a passport proof. It issues the
 // challenges it later accepts, so a proof can only be bound to a nonce this
-// verifier handed out, for the policy it handed out with it.
+// verifier handed out, for the policy it handed out with it. A verifier is not
+// safe for concurrent use: its nonce bookkeeping is a pair of plain maps.
 type Verifier struct {
 	sys        *zkp.System
 	name       string
@@ -105,6 +107,7 @@ func (v *Verifier) ExportState() State {
 	for k := range v.used {
 		st.Used = append(st.Used, k)
 	}
+	slices.Sort(st.Used) // map order would rewrite the state file every time
 	return st
 }
 
