@@ -15,8 +15,8 @@ A local, CLI-first MVP in Go on [gnark](https://github.com/Consensys/gnark).
 Groth16 over BN254, Poseidon2 in-circuit, and a 2-of-3 committee whose EdDSA
 signatures are verified inside the proof. No external services.
 
-日本語版は [README.ja.md](README.ja.md)。設計の詳細は
-[docs/design-notes.md](docs/design-notes.md)。
+This document in Japanese: [README.ja.md](README.ja.md). The design in detail:
+[docs/design-notes.md](docs/design-notes.md).
 
 ## What the service gets, and what it never sees
 
