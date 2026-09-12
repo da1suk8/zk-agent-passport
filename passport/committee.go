@@ -69,6 +69,27 @@ func (n *CommitteeNode) Sign(hash field.Element) ([]byte, error) {
 	return n.private.Sign(msg, mimc.NewMiMC())
 }
 
+// ShareRating splits a rating into three additive shares over the field:
+// rating = s1 + s2 + s3. Any two shares reveal nothing about the rating.
+func ShareRating(rating int) ([CommitteeSize]field.Element, error) {
+	var shares [CommitteeSize]field.Element
+	var err error
+	if shares[0], err = field.Random(); err != nil {
+		return shares, err
+	}
+	if shares[1], err = field.Random(); err != nil {
+		return shares, err
+	}
+	rest, err := field.Sub(field.FromInt(int64(rating)), shares[0])
+	if err != nil {
+		return shares, err
+	}
+	if shares[2], err = field.Sub(rest, shares[1]); err != nil {
+		return shares, err
+	}
+	return shares, nil
+}
+
 // Accumulate adds a share to the node's partial sum for a batch.
 func (n *CommitteeNode) Accumulate(batchKey string, share field.Element) error {
 	current, ok := n.partials[batchKey]

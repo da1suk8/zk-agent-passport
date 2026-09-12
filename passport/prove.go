@@ -77,91 +77,28 @@ type ProofPackage struct {
 }
 
 // Prove generates a proof that the agent's certificate satisfies the policy.
+// Every condition the circuit enforces is checked here first, so an agent
+// that cannot satisfy the policy learns why instead of watching a proof fail.
 func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 	cert := req.Issued.Certificate
-	pol := req.Policy.Policy
 
-	// The agent must actually hold this certificate.
-	passportCommitment, err := field.Commit(req.Agent.AgentSecret, req.Agent.PassportSalt)
+	if err := checkHolder(req); err != nil {
+		return nil, err
+	}
+	if err := checkPolicyConditions(req); err != nil {
+		return nil, err
+	}
+	certified, err := checkManifests(req)
 	if err != nil {
 		return nil, err
 	}
-	if passportCommitment != cert.PassportCommitment {
-		return nil, ErrNotPassportHolder
-	}
-	scoreCommitment, err := field.Commit(req.Issued.Score, req.Issued.ScoreSalt)
+	signatures, signers, err := selectQuorum(cert, req.Keyset)
 	if err != nil {
 		return nil, err
 	}
-	if scoreCommitment != cert.ScoreCommitment {
-		return nil, ErrScoreOpening
-	}
-
-	// Policy conditions the circuit will enforce.
-	if below, err := field.Less(req.Issued.Score, pol.RequiredThreshold); err != nil || below {
-		if err != nil {
-			return nil, err
-		}
-		return nil, ErrThresholdNotMet
-	}
-	if tooFew, err := field.Less(cert.ReceiptCount, pol.MinimumReceiptCount); err != nil || tooFew {
-		if err != nil {
-			return nil, err
-		}
-		return nil, ErrReceiptCountNotMet
-	}
-	if cert.TaskDomain != pol.RequestedTaskDomain || cert.AggregationEpoch != pol.RequestedAggregationEpoch {
-		return nil, fmt.Errorf("%w: domain or epoch", ErrPolicyMismatch)
-	}
-	if outlived, err := field.Less(cert.ExpiresAt, req.Challenge.ProofExpiresAt); err != nil || outlived {
-		if err != nil {
-			return nil, err
-		}
-		return nil, ErrCertificateExpired
-	}
-
-	// Manifests: the certified one opens the certificate, the current one
-	// opens the policy's request, and the change between them is permitted.
-	if req.CertifiedManifest == (Manifest{}) {
-		req.CertifiedManifest = req.Agent.Manifest
-	}
-	certifiedCommitment, err := ManifestCommitment(req.CertifiedManifest)
+	paths, err := allowlistPaths(req.Policy, certified, req.Agent.Manifest)
 	if err != nil {
 		return nil, err
-	}
-	if certifiedCommitment != cert.AgentManifestCommitment {
-		return nil, fmt.Errorf("%w: certificate was not issued for the given certified manifest", ErrPolicyMismatch)
-	}
-	current := req.Agent.Manifest
-	if req.Agent.AgentManifestCommitment != pol.RequestedManifestCommitment {
-		return nil, fmt.Errorf("%w: policy requests a manifest other than the agent's current one", ErrPolicyMismatch)
-	}
-	if err := req.Policy.VersionPolicy.Permits(req.CertifiedManifest, current); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrPolicyMismatch, err)
-	}
-
-	// Committee quorum from the verifier's keyset.
-	if cert.CommitteeKeysetID != req.Keyset.ID {
-		return nil, ErrKeysetMismatch
-	}
-	var signatures [zkp.Quorum][]byte
-	var signers [zkp.Quorum]int
-	seen := map[int]bool{}
-	found := 0
-	for _, sig := range cert.Signatures {
-		idx, ok := req.Keyset.Index(sig.NodeID)
-		if !ok || seen[idx] {
-			continue
-		}
-		seen[idx] = true
-		signatures[found], signers[found] = sig.Signature, idx
-		found++
-		if found == zkp.Quorum {
-			break
-		}
-	}
-	if found < zkp.Quorum {
-		return nil, ErrInsufficientQuorum
 	}
 
 	nullifier, err := Nullifier(req.Agent.AgentSecret, req.Challenge.VerifierID)
@@ -169,7 +106,7 @@ func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 		return nil, err
 	}
 	statement := BuildStatement(req.Policy, req.Challenge, req.Keyset, nullifier)
-	w := zkp.Witness{
+	proof, err := sys.Prove(zkp.Witness{
 		PublicInputs:            statement,
 		CertificateID:           cert.CertificateID,
 		PassportCommitment:      cert.PassportCommitment,
@@ -186,24 +123,129 @@ func Prove(sys *zkp.System, req ProofRequest) (*ProofPackage, error) {
 		ScoreSalt:               req.Issued.ScoreSalt,
 		AgentSecret:             req.Agent.AgentSecret,
 		PassportSalt:            req.Agent.PassportSalt,
-		CertifiedManifest:       ManifestFields(req.CertifiedManifest),
-		CurrentManifest:         ManifestFields(current),
-	}
-	certifiedValues, currentValues := manifestValues(req.CertifiedManifest), manifestValues(current)
-	for i := 0; i < ManifestFieldCount; i++ {
-		path := EmptyPath()
-		if certifiedValues[i] != currentValues[i] {
-			p, ok := req.Policy.Allowlist.Path(i, currentValues[i])
-			if !ok {
-				return nil, fmt.Errorf("%w: %s", ErrManifestValueNotAllowed, ManifestFieldNames[i])
-			}
-			path = p
-		}
-		w.AllowlistPaths[i] = zkp.MerkleWitness{Index: field.FromInt(path.Index), Siblings: path.Siblings}
-	}
-	proof, err := sys.Prove(w)
+		CertifiedManifest:       ManifestFields(certified),
+		CurrentManifest:         ManifestFields(req.Agent.Manifest),
+		AllowlistPaths:          paths,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("prove: %w", err)
 	}
 	return &ProofPackage{Proof: proof, Statement: statement}, nil
+}
+
+// checkHolder verifies that the agent actually holds this certificate: its
+// secret opens the passport commitment, and its score opens the score
+// commitment the committee signed.
+func checkHolder(req ProofRequest) error {
+	cert := req.Issued.Certificate
+	passportCommitment, err := field.Commit(req.Agent.AgentSecret, req.Agent.PassportSalt)
+	if err != nil {
+		return err
+	}
+	if passportCommitment != cert.PassportCommitment {
+		return ErrNotPassportHolder
+	}
+	scoreCommitment, err := field.Commit(req.Issued.Score, req.Issued.ScoreSalt)
+	if err != nil {
+		return err
+	}
+	if scoreCommitment != cert.ScoreCommitment {
+		return ErrScoreOpening
+	}
+	return nil
+}
+
+// checkPolicyConditions mirrors the numeric and equality conditions the
+// circuit enforces over the certificate and the policy.
+func checkPolicyConditions(req ProofRequest) error {
+	cert, pol := req.Issued.Certificate, req.Policy.Policy
+	if below, err := field.Less(req.Issued.Score, pol.RequiredThreshold); err != nil {
+		return err
+	} else if below {
+		return ErrThresholdNotMet
+	}
+	if tooFew, err := field.Less(cert.ReceiptCount, pol.MinimumReceiptCount); err != nil {
+		return err
+	} else if tooFew {
+		return ErrReceiptCountNotMet
+	}
+	if cert.TaskDomain != pol.RequestedTaskDomain || cert.AggregationEpoch != pol.RequestedAggregationEpoch {
+		return fmt.Errorf("%w: domain or epoch", ErrPolicyMismatch)
+	}
+	if outlived, err := field.Less(cert.ExpiresAt, req.Challenge.ProofExpiresAt); err != nil {
+		return err
+	} else if outlived {
+		return ErrCertificateExpired
+	}
+	return nil
+}
+
+// checkManifests resolves the certified manifest (defaulting to the agent's
+// current one) and checks the three manifest conditions: the certified one
+// opens the certificate, the current one opens the policy's request, and the
+// change between them is permitted. It returns the resolved certified
+// manifest.
+func checkManifests(req ProofRequest) (Manifest, error) {
+	certified := req.CertifiedManifest
+	if certified == (Manifest{}) {
+		certified = req.Agent.Manifest
+	}
+	certifiedCommitment, err := ManifestCommitment(certified)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if certifiedCommitment != req.Issued.Certificate.AgentManifestCommitment {
+		return Manifest{}, fmt.Errorf("%w: certificate was not issued for the given certified manifest", ErrPolicyMismatch)
+	}
+	if req.Agent.AgentManifestCommitment != req.Policy.Policy.RequestedManifestCommitment {
+		return Manifest{}, fmt.Errorf("%w: policy requests a manifest other than the agent's current one", ErrPolicyMismatch)
+	}
+	if err := req.Policy.VersionPolicy.Permits(certified, req.Agent.Manifest); err != nil {
+		return Manifest{}, fmt.Errorf("%w: %w", ErrPolicyMismatch, err)
+	}
+	return certified, nil
+}
+
+// selectQuorum picks Quorum signatures from distinct keyset entries. A
+// signature from a node outside the keyset, or a second signature from a node
+// already counted, does not contribute.
+func selectQuorum(cert ScoreCertificate, keyset CommitteeKeyset) (signatures [zkp.Quorum][]byte, signers [zkp.Quorum]int, err error) {
+	if cert.CommitteeKeysetID != keyset.ID {
+		return signatures, signers, ErrKeysetMismatch
+	}
+	seen := map[int]bool{}
+	found := 0
+	for _, sig := range cert.Signatures {
+		idx, ok := keyset.Index(sig.NodeID)
+		if !ok || seen[idx] {
+			continue
+		}
+		seen[idx] = true
+		signatures[found], signers[found] = sig.Signature, idx
+		found++
+		if found == zkp.Quorum {
+			return signatures, signers, nil
+		}
+	}
+	return signatures, signers, ErrInsufficientQuorum
+}
+
+// allowlistPaths builds one Merkle path per manifest field: a real inclusion
+// path for a field that changed, and the placeholder path for one that did
+// not. The circuit ignores the path of an unchanged field.
+func allowlistPaths(policy PolicyBundle, certified, current Manifest) ([ManifestFieldCount]zkp.MerkleWitness, error) {
+	var paths [ManifestFieldCount]zkp.MerkleWitness
+	certifiedValues, currentValues := manifestValues(certified), manifestValues(current)
+	for i := 0; i < ManifestFieldCount; i++ {
+		path := EmptyPath()
+		if certifiedValues[i] != currentValues[i] {
+			p, ok := policy.Allowlist.Path(i, currentValues[i])
+			if !ok {
+				return paths, fmt.Errorf("%w: %s", ErrManifestValueNotAllowed, ManifestFieldNames[i])
+			}
+			path = p
+		}
+		paths[i] = zkp.MerkleWitness{Index: field.FromInt(path.Index), Siblings: path.Siblings}
+	}
+	return paths, nil
 }
