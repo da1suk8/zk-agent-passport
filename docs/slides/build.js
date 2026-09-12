@@ -681,7 +681,54 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 10. NUMBERS
+// 10. CLOSING
+// =======================================================================
+{
+  const s = slide({ dark: true });
+  s.addText("まとめ — いま動いているもの", {
+    x: M, y: 0.66, w: CW, h: 0.6, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 29, bold: true, color: WHITE,
+  });
+
+  const lines = [
+    "合計点も取引先も渡さずに、条件を満たしていることだけを示せる",
+    "実績は名前ではなく、モデル・指示・ツール・権限に結び付く",
+    "2 つのサービスが記録を突き合わせても、同じ Agent だとは分からない",
+  ];
+  lines.forEach((t, i) => {
+    const y = 1.72 + i * 0.8;
+    s.addShape(pres.ShapeType.roundRect, { x: M, y, w: CW, h: 0.66, fill: { color: INK2 }, rectRadius: 0.08 });
+    s.addShape(pres.ShapeType.ellipse, { x: M + 0.32, y: y + 0.23, w: 0.2, h: 0.2, fill: { color: GREEN } });
+    s.addText(t, {
+      x: M + 0.72, y, w: CW - 1.1, h: 0.66, isTextBox: true, margin: 0,
+      fontFace: F, fontSize: 15, color: LILAC2, valign: "middle",
+    });
+  });
+
+  s.addText("ここまでが、いま動いているもの。残りは、その値段と限界の話です。", {
+    x: M, y: 4.15, w: CW, h: 0.32, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 12.5, color: MUTED, align: "center",
+  });
+
+  s.addText("「実績はエージェントではなく、その構成に付く」", {
+    x: M, y: 4.62, w: CW, h: 0.8, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 27, bold: true, color: GREEN, align: "center",
+  });
+
+  s.addText("github.com/da1suk8/zk-agent-passport", {
+    x: M, y: 5.62, w: CW, h: 0.4, isTextBox: true, margin: 0,
+    fontFace: FM, fontSize: 15, color: WHITE, align: "center",
+  });
+  s.addText("go run ./cmd/web　でブラウザデモ　·　go test ./...　で 27 ケース　·　go run ./cmd/bench　で計測", {
+    x: M, y: 6.05, w: CW, h: 0.4, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 12, color: MUTED, align: "center",
+  });
+  pageNum(s);
+  s.addNotes("3:45-4:00 まとめ。デモの直後、見たばかりのうちに主張を 3 行で確定させる。3 行はデモの ①（中身を見せずに合格）・③④（構成に束縛）・⑥（突き合わせても追えない）にそのまま対応する。キャッチをもう一度出して、『残りは値段と限界の話です』と言って次の 2 枚へ渡す。ここが締めではないので、余韻を作らず短く切る。");
+}
+
+// =======================================================================
+// 11. NUMBERS
 // =======================================================================
 {
   const s = slide();
@@ -750,11 +797,11 @@ function note(s, y, text, color) {
     fontFace: F, fontSize: 11.5, italic: true, color: MUTED, lineSpacing: 17,
   });
   pageNum(s);
-  s.addNotes("3:45-4:10 数字。制約が 2 段階で増えた推移を『プライバシーの値段』として語る。55 ms なら市場の効率を損なうレベルではない、と添える。");
+  s.addNotes("4:00-4:25 数字。制約が 2 段階で増えた推移を『プライバシーの値段』として語る。55 ms なら市場の効率を損なうレベルではない、と添える。");
 }
 
 // =======================================================================
-// 11. LIMITS
+// 12. LIMITS
 // =======================================================================
 {
   const s = slide();
@@ -789,49 +836,7 @@ function note(s, y, text, color) {
     fontFace: F, fontSize: 13, bold: true, color: GREEN, valign: "middle",
   });
   pageNum(s);
-  s.addNotes("4:10-4:30 限界。弱点としてではなく設計判断として言う。自分から先に出す。ここを誠実に出すと、質疑が Shamir・直接秘密分散・許可 Manifest 集合という先の話に進む。");
-}
-
-// =======================================================================
-// 12. CLOSING
-// =======================================================================
-{
-  const s = slide({ dark: true });
-  s.addText("まとめ", {
-    x: M, y: 0.66, w: CW, h: 0.6, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 29, bold: true, color: WHITE,
-  });
-
-  const lines = [
-    "証明書はサービスに渡らない。渡るのは 164 バイトの証明と公開入力 20 個だけ。",
-    "サービスが得る Agent 固有の値は、そのサービス専用の nullifier ひとつ。",
-    "モデルやプロンプトを差し替えれば、実績は自動的に引き継がれない。",
-  ];
-  lines.forEach((t, i) => {
-    const y = 1.75 + i * 0.82;
-    s.addShape(pres.ShapeType.roundRect, { x: M, y, w: CW, h: 0.66, fill: { color: INK2 }, rectRadius: 0.08 });
-    s.addShape(pres.ShapeType.ellipse, { x: M + 0.32, y: y + 0.23, w: 0.2, h: 0.2, fill: { color: GREEN } });
-    s.addText(t, {
-      x: M + 0.72, y, w: CW - 1.1, h: 0.66, isTextBox: true, margin: 0,
-      fontFace: F, fontSize: 15, color: LILAC2, valign: "middle",
-    });
-  });
-
-  s.addText("「実績はエージェントではなく、その構成に付く」", {
-    x: M, y: 4.5, w: CW, h: 0.8, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 27, bold: true, color: GREEN, align: "center",
-  });
-
-  s.addText("github.com/da1suk8/zk-agent-passport", {
-    x: M, y: 5.55, w: CW, h: 0.4, isTextBox: true, margin: 0,
-    fontFace: FM, fontSize: 15, color: WHITE, align: "center",
-  });
-  s.addText("go run ./cmd/web　でブラウザデモ　·　go test ./...　で 27 ケース　·　go run ./cmd/bench　で計測", {
-    x: M, y: 5.98, w: CW, h: 0.4, isTextBox: true, margin: 0,
-    fontFace: F, fontSize: 12, color: MUTED, align: "center",
-  });
-  pageNum(s);
-  s.addNotes("4:30-4:45 締め。3 行を読み上げてからキャッチに戻る。リポジトリはそのまま leave-behind になる。");
+  s.addNotes("4:25-4:45 限界。ここが最後のスライドになるので、質疑の間もこの 1 枚が映り続ける。弱点としてではなく設計判断として言う。自分から先に出す。ここを誠実に出すと、質疑が Shamir・直接秘密分散・許可 Manifest 集合という先の話に進む。");
 }
 
 // =======================================================================
@@ -847,7 +852,7 @@ function note(s, y, text, color) {
     x: M, y: 3.55, w: CW, h: 0.8, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 34, bold: true, color: WHITE, align: "center",
   });
-  s.addText("構成の詳細　·　比較表　·　なぜ ZK か　·　制約の内訳　·　信頼の前提　·　メンターの指摘　·　想定問答", {
+  s.addText("構成の詳細　·　何が溜まるか　·　照会ではなく代行　·　照会先がない　·　比較表　·　なぜ ZK か　·　制約の内訳　·　信頼の前提　·　メンターの指摘　·　想定問答", {
     x: M, y: 4.45, w: CW, h: 0.4, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 14, color: MUTED, align: "center",
   });
@@ -927,7 +932,165 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 15. COMPARISON TABLE
+// 15. BACKUP - NOTHING ACCUMULATES
+// =======================================================================
+{
+  const s = slide();
+  head(s, "BACKUP", "どこにも「評価表」は溜まらない");
+
+  const hdr = (t) => ({ text: t, options: { fill: { color: INDIGO }, color: WHITE, bold: true, fontSize: 11.5, align: "left", valign: "middle", fontFace: F } });
+  const k = (t) => ({ text: t, options: { fontSize: 12, bold: true, color: INDIGO, align: "left", valign: "middle", fontFace: F } });
+  const c = (t) => ({ text: t, options: { fontSize: 11.5, color: "3A3F63", align: "left", valign: "middle", fontFace: F } });
+  const yes = { text: "✓", options: { color: GREEN, bold: true, fontSize: 15, align: "center", valign: "middle", fontFace: F } };
+  const no = { text: "✗", options: { color: CORAL, bold: true, fontSize: 15, align: "center", valign: "middle", fontFace: F } };
+  const part = (t) => ({ text: t, options: { fontSize: 11, bold: true, color: MUTED, align: "center", valign: "middle", fontFace: F } });
+
+  s.addTable([
+    [hdr("どこに"), hdr("何が残るか"), hdr("誰が誰を評価したか"), hdr("点数")],
+    [k("Receipt（現物）"), c("3 つ組すべて。Gateway を通ると破棄される"), yes, yes],
+    [k("Input Gateway"), c("重複検出のキーだけ。値は空の構造体"), yes, no],
+    [k("Committee ノード"), c("batchKey ごとの部分和が 1 つ"), no, no],
+    [k("Agent"), c("証明書・合計点・その乱数"), no, part("合計だけ")],
+    [k("Service（検証者）"), c("そのサービス専用の nullifier"), no, no],
+  ], {
+    x: M, y: 1.85, w: CW, colW: [2.5, 4.5, 2.2, 2.733],
+    rowH: [0.55, 0.64, 0.64, 0.64, 0.64, 0.64],
+    border: { type: "solid", color: WHITE, pt: 2 },
+    fill: { color: LILAC }, fontFace: F,
+  });
+
+  s.addShape(pres.ShapeType.roundRect, { x: M, y: 5.8, w: CW, h: 0.72, fill: { color: INK }, rectRadius: 0.08, shadow: sh() });
+  s.addText("issuerEpochKeys map[string]struct{}　←　値が空。点数を入れる場所そのものがない", {
+    x: M + 0.3, y: 5.8, w: CW - 0.6, h: 0.72, isTextBox: true, margin: 0,
+    fontFace: FM, fontSize: 13, bold: true, color: GREEN, valign: "middle", align: "center",
+  });
+  pageNum(s);
+  s.addNotes("「評価が溜まっていくんですよね？」と言われたときの 1 枚。溜まるのは『A 社が この封筒を この期間に この領域で 評価した』という二部グラフだけで、重み（★の値）はどこにも残らない。しかもそれは重複検出の副産物。個別の ★5・★4・★5 は Committee が足し込んだ時点で区別がつかなくなり、残るのは合計 14 だけ。MVP では Gateway も Committee も永続化していない（enroll のたびに作り直し、鍵は捨てる）。");
+}
+
+// =======================================================================
+// 16. BACKUP - PROXY NOT LOOKUP
+// =======================================================================
+{
+  const s = slide();
+  head(s, "BACKUP", "照会ではなく、代行して証明する");
+
+  const box = (x, y, w, h, label, fill, color, line) => {
+    s.addShape(pres.ShapeType.roundRect, Object.assign(
+      { x, y, w, h, fill: { color: fill }, rectRadius: 0.06 },
+      line ? { line: { color: line, width: 2 } } : {}));
+    s.addText(label, {
+      x, y, w, h, isTextBox: true, margin: 0,
+      fontFace: F, fontSize: 12.5, bold: true, color, align: "center", valign: "middle",
+    });
+  };
+
+  // ---- ✗ 照会モデル ----------------------------------------------------
+  card(s, M, 1.75, CW, 1.5, CORAL_L);
+  s.addText("✗　照会モデル（信用情報機関）", {
+    x: M + 0.35, y: 1.82, w: 4.6, h: 0.32, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 13, bold: true, color: CORAL,
+  });
+  box(1.15, 2.54, 2.3, 0.6, "予約サービス", INDIGO, WHITE);
+  box(5.35, 2.54, 2.3, 0.6, "中央の台帳", CORAL, WHITE);
+  box(9.55, 2.54, 2.3, 0.6, "予約サービス", INDIGO, WHITE);
+  [[3.45, "「条件を満たす？」"], [7.65, "「満たします」"]].forEach(([gx, t]) => {
+    s.addText(t, {
+      x: gx, y: 2.22, w: 1.9, h: 0.26, isTextBox: true, margin: 0,
+      fontFace: F, fontSize: 9.5, bold: true, color: CORAL, align: "center",
+    });
+    s.addShape(pres.ShapeType.rightArrow, { x: gx + 0.7, y: 2.68, w: 0.5, h: 0.32, fill: { color: CORAL } });
+  });
+
+  // ---- ✓ 証明モデル ----------------------------------------------------
+  card(s, M, 3.42, CW, 2.45, GREEN_L);
+  s.addText("✓　証明モデル（zkAgent Passport）", {
+    x: M + 0.35, y: 3.49, w: 5.2, h: 0.32, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 13, bold: true, color: GREEN,
+  });
+  box(1.4, 4.22, 2.7, 0.62, "予約サービス", INDIGO, WHITE);
+  box(8.5, 4.22, 2.7, 0.62, "Agent", "F8F9FD", INDIGO, INDIGO);
+  s.addText("①「私の条件はこれです」Policy と nonce", {
+    x: 4.3, y: 3.90, w: 4.0, h: 0.26, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 10, bold: true, color: INDIGO, align: "center",
+  });
+  s.addShape(pres.ShapeType.rightArrow, { x: 6.0, y: 4.28, w: 0.6, h: 0.24, fill: { color: IND_LT } });
+  s.addShape(pres.ShapeType.leftArrow, { x: 6.0, y: 4.62, w: 0.6, h: 0.24, fill: { color: GREEN } });
+  s.addText("③「調べました。これがその証明です」164 bytes", {
+    x: 4.2, y: 4.94, w: 4.2, h: 0.26, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 10, bold: true, color: GREEN, align: "center",
+  });
+  s.addText("④ 検算するだけ。誰にも聞かない", {
+    x: 1.4, y: 4.94, w: 2.7, h: 0.46, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 10.5, bold: true, color: INDIGO, align: "center", valign: "middle",
+  });
+  s.addText("② 自分で調べる（回路を実行）", {
+    x: 8.5, y: 4.94, w: 2.7, h: 0.46, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 10.5, bold: true, color: INDIGO, align: "center", valign: "middle",
+  });
+
+  // ---- 落ち -------------------------------------------------------------
+  s.addShape(pres.ShapeType.roundRect, { x: M, y: 6.02, w: CW, h: 0.7, fill: { color: INDIGO }, rectRadius: 0.08, shadow: sh() });
+  s.addText("サービスがやるはずだった照会を、Agent が自分の手元で済ませて、済ませたことを証明する", {
+    x: M + 0.4, y: 6.02, w: CW - 0.8, h: 0.7, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 15, bold: true, color: WHITE, valign: "middle", align: "center",
+  });
+  pageNum(s);
+  s.addNotes("上の図は「あなたが思い浮かべている形」、下が実際の形。違いは矢印の向きと本数。照会モデルでは中央に問い合わせが飛び、答えが返る。証明モデルでは、サービスは条件を出すだけで、調べるのは Agent 自身。調べた結果ではなく『調べて通った』ことを 164 バイトの証明にして返す。サービスはそれを検算するだけで、Committee にも Gateway にも Provider にも一度も聞かない。一言でいうと、サービスがやるはずだった照会を Agent が代行して、代行したことを証明している。");
+}
+
+// =======================================================================
+// 17. BACKUP - NO LOOKUP
+// =======================================================================
+{
+  const s = slide();
+  head(s, "BACKUP", "照会先がない — 信用情報機関ではなく、パスポート");
+
+  const cw2 = (CW - 0.45) / 2, top = 1.85, ch = 3.2;
+
+  card(s, M, top, cw2, ch, CORAL_L);
+  s.addText("✗　照会モデル（信用情報機関）", {
+    x: M + 0.35, y: top + 0.3, w: cw2 - 0.7, h: 0.42, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 16, bold: true, color: CORAL,
+  });
+  s.addText([
+    { text: "サービスが中央に「この Agent は条件を満たすか」と聞く", options: { bullet: true, breakLine: true } },
+    { text: "中央が全履歴を持つ", options: { bullet: true, breakLine: true } },
+    { text: "誰がどのサービスにいつ来たかも中央に残る", options: { bullet: true, breakLine: true } },
+    { text: "可用性も中央に依存する", options: { bullet: true } },
+  ], {
+    x: M + 0.35, y: top + 0.88, w: cw2 - 0.7, h: 2.1, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 13, color: "5A2418", lineSpacing: 21, paraSpaceAfter: 9,
+  });
+
+  card(s, M + cw2 + 0.45, top, cw2, ch, GREEN_L);
+  s.addText("✓　証明モデル（zkAgent Passport）", {
+    x: M + cw2 + 0.8, y: top + 0.3, w: cw2 - 0.7, h: 0.42, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 16, bold: true, color: GREEN,
+  });
+  s.addText([
+    { text: "サービスは条件（Policy と nonce）を出すだけ", options: { bullet: true, breakLine: true } },
+    { text: "Agent が自分の手元で検査し、証明を作る", options: { bullet: true, breakLine: true } },
+    { text: "サービスは証明を検算するだけ。誰にも聞かない", options: { bullet: true, breakLine: true } },
+    { text: "証明書を出したあと、Committee は二度と登場しない", options: { bullet: true } },
+  ], {
+    x: M + cw2 + 0.8, y: top + 0.88, w: cw2 - 0.7, h: 2.1, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 13, color: "23483C", lineSpacing: 21, paraSpaceAfter: 9,
+  });
+
+  s.addShape(pres.ShapeType.roundRect, { x: M, y: 5.25, w: CW, h: 0.72, fill: { color: INK }, rectRadius: 0.08, shadow: sh() });
+  s.addText("verifier の import は errors と fmt だけ　←　net/http も database/sql もない", {
+    x: M + 0.3, y: 5.25, w: CW - 0.6, h: 0.72, isTextBox: true, margin: 0,
+    fontFace: FM, fontSize: 13, bold: true, color: GREEN, valign: "middle", align: "center",
+  });
+
+  note(s, 6.15, "そもそもサービスは passportCommitment を知らない。見えるのは自分専用の nullifier だけなので、照会しようにもキーがない。");
+  pageNum(s);
+  s.addNotes("「サービスが zkPass に問い合わせて答えをもらうんですよね？」と言われたときの 1 枚。問い合わせる相手が存在しない、というのが答え。サービスの 5 つの検査は全部ローカル処理で、Committee にも Gateway にも Provider にも一度も通信しない。照会先を置くと、その相手が『どの Agent がどのサービスにいつ来たか』を全部握る監視者になる。それを避けるのが ZK を使う理由の 1 つ。普通のパスポートとの違いは、提示しても中身が見えず、審査官ごとに別の整理番号（nullifier）になること。");
+}
+
+// =======================================================================
+// 18. COMPARISON TABLE
 // =======================================================================
 {
   const s = slide();
@@ -965,7 +1128,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 16. WHY ZK
+// 19. WHY ZK
 // =======================================================================
 {
   const s = slide();
@@ -1006,7 +1169,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 17. BACKUP - CONSTRAINT BREAKDOWN
+// 20. BACKUP - CONSTRAINT BREAKDOWN
 // =======================================================================
 {
   const s = slide();
@@ -1059,7 +1222,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 18. BACKUP - TRUST ASSUMPTIONS
+// 21. BACKUP - TRUST ASSUMPTIONS
 // =======================================================================
 {
   const s = slide();
@@ -1092,7 +1255,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 19. BACKUP - MENTOR FEEDBACK
+// 22. BACKUP - MENTOR FEEDBACK
 // =======================================================================
 {
   const s = slide();
@@ -1130,7 +1293,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 20. BACKUP - Q&A
+// 23. BACKUP - Q&A
 // =======================================================================
 {
   const s = slide();
@@ -1162,7 +1325,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 21. PROBLEM (無効化: 場面スライドに統合)
+// 24. PROBLEM (無効化: 場面スライドに統合)
 // =======================================================================
 /*  2026-09-12 に「01 ─ 場面」へ統合した。分けて話したくなったらこのコメントを外し、
     new_order に "PROBLEM (無効化: 場面スライドに統合)" を戻す。
