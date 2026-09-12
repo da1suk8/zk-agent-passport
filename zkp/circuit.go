@@ -91,18 +91,40 @@ type PassportCircuit struct {
 	AllowlistSiblings [ManifestFieldCount][AllowlistDepth]frontend.Variable
 }
 
-// Define declares the constraints.
+// hasher is the in-circuit Poseidon2 sponge, reset before every absorption.
+type hasher func(inputs ...frontend.Variable) frontend.Variable
+
+// Define declares the constraints. Each step below is one condition the
+// passport has to satisfy, in the same order the prover checks them natively.
 func (c *PassportCircuit) Define(api frontend.API) error {
 	h, err := poseidon2.New(api)
 	if err != nil {
 		return err
 	}
-	hash := func(inputs ...frontend.Variable) frontend.Variable {
+	hash := hasher(func(inputs ...frontend.Variable) frontend.Variable {
 		h.Reset()
 		h.Write(inputs...)
 		return h.Sum()
-	}
+	})
 
+	if err := c.assertCommitteeQuorum(api, hash); err != nil {
+		return err
+	}
+	c.assertPolicyHash(api, hash)
+	c.assertOpenings(api, hash)
+	c.assertManifestVersionPolicy(api, hash)
+	c.assertCertificateMatchesPolicy(api)
+	c.assertBounds(api)
+
+	// Groth16 does not bind public inputs that appear in no constraint. The
+	// nonce is otherwise unused, so it is constrained to be non-zero.
+	api.AssertIsDifferent(c.Nonce, 0)
+	return nil
+}
+
+// assertCommitteeQuorum recomputes the certificate hash and requires that
+// Quorum distinct members of the public keyset signed it.
+func (c *PassportCircuit) assertCommitteeQuorum(api frontend.API, hash hasher) error {
 	// The certificate hash commits to every certificate field, including
 	// the keyset it was issued under.
 	certificateHash := hash(
@@ -117,8 +139,6 @@ func (c *PassportCircuit) Define(api frontend.API) error {
 		c.CertificateExpiresAt,
 		c.CommitteeKeysetID,
 	)
-
-	// A quorum of distinct committee nodes signed that hash.
 	curve, err := twistededwards.NewEdCurve(api, tedwards.BN254)
 	if err != nil {
 		return err
@@ -134,8 +154,12 @@ func (c *PassportCircuit) Define(api frontend.API) error {
 		}
 	}
 	api.AssertIsDifferent(c.SignerIndex[0], c.SignerIndex[1])
+	return nil
+}
 
-	// The policy hash commits to every policy field.
+// assertPolicyHash binds the published policy hash to the policy fields, so a
+// proof for one policy cannot be presented under another.
+func (c *PassportCircuit) assertPolicyHash(api frontend.API, hash hasher) {
 	api.AssertIsEqual(hash(
 		c.PolicyVersion,
 		c.RequiredThreshold,
@@ -146,16 +170,23 @@ func (c *PassportCircuit) Define(api frontend.API) error {
 		c.ManifestMutableMask,
 		c.ManifestAllowlistRoot,
 	), c.PolicyHash)
+}
 
-	// Openings: score, passport, nullifier, both manifests.
+// assertOpenings proves the prover holds what the commitments hide: the
+// score, the passport secret, and both manifests. The nullifier is derived
+// from the same secret, which is what makes it stable per verifier.
+func (c *PassportCircuit) assertOpenings(api frontend.API, hash hasher) {
 	api.AssertIsEqual(hash(c.Score, c.ScoreSalt), c.ScoreCommitment)
 	api.AssertIsEqual(hash(c.AgentSecret, c.PassportSalt), c.PassportCommitment)
 	api.AssertIsEqual(hash(c.AgentSecret, c.VerifierID), c.Nullifier)
 	api.AssertIsEqual(hash(c.CertifiedManifest[:]...), c.AgentManifestCommitment)
 	api.AssertIsEqual(hash(c.CurrentManifest[:]...), c.RequestedManifestCommitment)
+}
 
-	// Manifest version policy: each field is either unchanged, or mutable
-	// under the policy with its new value present in the allowlist.
+// assertManifestVersionPolicy requires every manifest field to be either
+// unchanged since certification, or mutable under the policy with its new
+// value present in the allowlist.
+func (c *PassportCircuit) assertManifestVersionPolicy(api frontend.API, hash hasher) {
 	mutable := api.ToBinary(c.ManifestMutableMask, ManifestFieldCount)
 	for i := 0; i < ManifestFieldCount; i++ {
 		same := api.IsZero(api.Sub(c.CertifiedManifest[i], c.CurrentManifest[i]))
@@ -174,21 +205,21 @@ func (c *PassportCircuit) Define(api frontend.API) error {
 		ok := api.Add(same, api.Mul(api.Sub(1, same), permitted))
 		api.AssertIsEqual(ok, 1)
 	}
+}
 
-	// The certificate must match the policy's domain and epoch exactly.
+// assertCertificateMatchesPolicy requires the certificate to be the one the
+// policy asked about: same task domain, same aggregation epoch.
+func (c *PassportCircuit) assertCertificateMatchesPolicy(api frontend.API) {
 	api.AssertIsEqual(c.TaskDomain, c.RequestedTaskDomain)
 	api.AssertIsEqual(c.AggregationEpoch, c.RequestedAggregationEpoch)
+}
 
-	// Unsigned 32-bit comparisons: score >= threshold, receiptCount >=
-	// minimum, and the certificate outlives the proof.
+// assertBounds checks score >= threshold, receiptCount >= minimum, and that
+// the certificate outlives the proof.
+func (c *PassportCircuit) assertBounds(api frontend.API) {
 	assertGreaterEqual32(api, c.Score, c.RequiredThreshold)
 	assertGreaterEqual32(api, c.ReceiptCount, c.MinimumReceiptCount)
 	assertGreaterEqual32(api, c.CertificateExpiresAt, c.ProofExpiresAt)
-
-	// Groth16 does not bind public inputs that appear in no constraint. The
-	// nonce is otherwise unused, so it is constrained to be non-zero.
-	api.AssertIsDifferent(c.Nonce, 0)
-	return nil
 }
 
 // assertGreaterEqual32 enforces a >= b with both operands range-checked to
