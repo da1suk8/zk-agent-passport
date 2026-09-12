@@ -20,7 +20,7 @@ import (
 	"github.com/consensys/gnark/std/hash/poseidon2"
 	"github.com/consensys/gnark/std/signature/eddsa"
 
-	"github.com/da1suk8/zk-agent-passport/demo"
+	"github.com/da1suk8/zk-agent-passport/internal/demo"
 	"github.com/da1suk8/zk-agent-passport/zkp"
 )
 

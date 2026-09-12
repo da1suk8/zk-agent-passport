@@ -154,19 +154,23 @@ invalidates the proof.
 
 ## Repository layout
 
+The four packages at the root are the protocol itself. Everything that only
+exists to demonstrate it lives under `internal/`, and every executable under
+`cmd/`.
+
 ```text
-field/       Field arithmetic, Poseidon2 hashing, commitments
-passport/    Agent, receipts, gateway, committee, policy, challenge, prover
-zkp/         PassportCircuit and the Groth16 prove/verify flow
-verifier/    Service-side verification
-demo/        Fixed demo participants and end-to-end tests
-cmd/demo/    CLI demo
-cmd/web/     Browser demo (Go HTTP server plus one embedded HTML page)
-cmd/agent/   Single-shot agent process (init, enroll, update-manifest, prove)
-cmd/service/ Verifier process (challenge, verify) with persisted nonce state
-cmd/bench/   Constraint breakdown and timing
-store/       JSON files exchanged between the agent and service processes
-docs/slides/ The five-minute presentation deck, the script that builds it, and the plan behind it
+field/          Field arithmetic, Poseidon2 hashing, commitments
+passport/       Agent, receipts, gateway, committee, policy, challenge, prover
+zkp/            PassportCircuit and the Groth16 prove/verify flow
+verifier/       Service-side verification
+internal/demo/  Fixed demo participants and end-to-end tests
+internal/store/ JSON files exchanged between the agent and service processes
+cmd/demo/       CLI demo
+cmd/web/        Browser demo (Go HTTP server plus one embedded HTML page)
+cmd/agent/      Single-shot agent process (init, enroll, update-manifest, prove)
+cmd/service/    Verifier process (challenge, verify) with persisted nonce state
+cmd/bench/      Constraint breakdown and timing
+docs/slides/    The five-minute presentation deck, the script that builds it, and the plan behind it
 ```
 
 ## Measured on an Apple Silicon Mac (`go run ./cmd/bench -n 20`)

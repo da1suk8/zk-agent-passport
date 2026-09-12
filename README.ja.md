@@ -99,19 +99,21 @@ go test ./...
 
 ## リポジトリの構成
 
+ルート直下の 4 つのパッケージがプロトコル本体です。それを見せるためだけに存在するものは `internal/` に、実行可能なコマンドは `cmd/` にまとめてあります。
+
 ```text
-field/       体の演算、Poseidon2 のハッシュ、コミットメント
-passport/    Agent、Receipt、Gateway、Committee、Policy、challenge、証明者
-zkp/         PassportCircuit と Groth16 の証明・検証
-verifier/    サービス側の検証
-demo/        固定のデモ参加者と e2e テスト
-cmd/demo/    CLI デモ
-cmd/web/     ブラウザデモ（Go の HTTP サーバーと埋め込み HTML 1 枚）
-cmd/agent/   単発の Agent プロセス（init、enroll、update-manifest、prove）
-cmd/service/ 検証者プロセス（challenge、verify）。nonce の状態を永続化
-cmd/bench/   制約の内訳と時間の計測
-store/       Agent と Service のプロセス間でやり取りする JSON の形式
-docs/slides/ 5 分の発表スライド、生成スクリプト、発表プラン
+field/          体の演算、Poseidon2 のハッシュ、コミットメント
+passport/       Agent、Receipt、Gateway、Committee、Policy、challenge、証明者
+zkp/            PassportCircuit と Groth16 の証明・検証
+verifier/       サービス側の検証
+internal/demo/  固定のデモ参加者と e2e テスト
+internal/store/ Agent と Service のプロセス間でやり取りする JSON の形式
+cmd/demo/       CLI デモ
+cmd/web/        ブラウザデモ（Go の HTTP サーバーと埋め込み HTML 1 枚）
+cmd/agent/      単発の Agent プロセス（init、enroll、update-manifest、prove）
+cmd/service/    検証者プロセス（challenge、verify）。nonce の状態を永続化
+cmd/bench/      制約の内訳と時間の計測
+docs/slides/    5 分の発表スライド、生成スクリプト、発表プラン
 ```
 
 ## Apple Silicon Mac での実測（`go run ./cmd/bench -n 20`）

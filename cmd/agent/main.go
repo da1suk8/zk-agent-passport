@@ -22,10 +22,10 @@ import (
 
 	"github.com/consensys/gnark/logger"
 
-	"github.com/da1suk8/zk-agent-passport/demo"
 	"github.com/da1suk8/zk-agent-passport/field"
+	"github.com/da1suk8/zk-agent-passport/internal/demo"
+	"github.com/da1suk8/zk-agent-passport/internal/store"
 	"github.com/da1suk8/zk-agent-passport/passport"
-	"github.com/da1suk8/zk-agent-passport/store"
 	"github.com/da1suk8/zk-agent-passport/zkp"
 )
 
