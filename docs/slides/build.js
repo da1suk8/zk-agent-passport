@@ -198,11 +198,60 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 2. SCENE
+// 2. CROWD
 // =======================================================================
 {
   const s = slide();
-  head(s, "01 ─ 問題提起", "この AI エージェントに、予約を任せてよいか");
+  head(s, "01 ─ 背景", "AI エージェントは山ほどある。どれに任せるか");
+
+  // --- 候補がずらりと並ぶ -----------------------------------------------
+  const gw = 7.2, gy = 1.9, gh = 3.2;
+  card(s, M, gy, gw, gh, LILAC);
+  for (let i = 0; i < 8; i += 1) {
+    const col = i % 4, row = Math.floor(i / 4);
+    const cx = M + 0.9 + col * 1.8, y = gy + 0.3 + row * 1.1;
+    const alt = (i + row) % 2 === 1;
+    robot(s, cx - 0.3375, y, 0.5, alt ? { head: IND_LT, part: "9297D8", eye: GREEN, mouth: WHITE } : null);
+  }
+  s.addText("どれも「この分野で実績があります」と言う", {
+    x: M + 0.3, y: gy + 2.45, w: gw - 0.6, h: 0.4, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 12.5, color: MUTED, align: "center",
+  });
+
+  // --- 選ぶ側 -----------------------------------------------------------
+  const dx = M + gw + 0.55, dw = M + CW - dx;
+  s.addShape(pres.ShapeType.roundRect, { x: dx, y: gy, w: dw, h: gh, fill: { color: INDIGO }, rectRadius: 0.06, shadow: sh() });
+  iconBuilding(s, dx + 0.32, gy + 0.26, 0.46, WHITE, INDIGO);
+  s.addShape(pres.ShapeType.roundRect, { x: dx + 0.88, y: gy + 0.28, w: 1.7, h: 0.4, fill: { color: WHITE }, rectRadius: 0.06 });
+  s.addText("予約サービス", {
+    x: dx + 0.88, y: gy + 0.28, w: 1.7, h: 0.4, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 12.5, bold: true, color: INDIGO, align: "center", valign: "middle",
+  });
+  s.addText("？", {
+    x: dx + 0.32, y: gy + 0.95, w: dw - 0.64, h: 0.95, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 46, bold: true, color: MINT, align: "center", valign: "middle",
+  });
+  s.addText("どれに任せてよいか、基準がない", {
+    x: dx + 0.32, y: gy + 2.0, w: dw - 0.64, h: 0.8, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 16, bold: true, color: WHITE, align: "center", valign: "middle", lineSpacing: 24,
+  });
+
+  // --- 帯 ---------------------------------------------------------------
+  s.addShape(pres.ShapeType.roundRect, { x: M, y: 5.35, w: CW, h: 0.82, fill: { color: LILAC }, rectRadius: 0.08 });
+  s.addText("手がかりになりそうなのは、他所のサービスで積んだ実績", {
+    x: M + 0.4, y: 5.35, w: CW - 0.8, h: 0.82, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 16, bold: true, color: INDIGO, valign: "middle",
+  });
+  pageNum(s);
+  s.addNotes("0:10-0:25 背景。まず母集団の話。旅行予約を代行する AI エージェントは今後いくらでも出てくる。予約サービスから見ると、どれに任せてよいかを決める基準がない。どれも「実績があります」と言う。手がかりになるのは他所で積んだ実績だろう、と言って次の 1 枚へ。ここは 15 秒で通す。");
+}
+
+// =======================================================================
+// 3. SCENE
+// =======================================================================
+{
+  const s = slide();
+  head(s, "02 ─ 問題提起", "「実績があります」と言われても、確かめようがない");
 
   const figY = 1.95, figH = 2.9;
 
@@ -224,7 +273,7 @@ function note(s, y, text, color) {
 
   robot(s, M + 0.42, figY + 0.92, 0.85);
 
-  s.addText("旅行予約を代行する AI エージェント。利用者の代わりに空室を探し、予約や変更をする。", {
+  s.addText("旅行予約を代行する AI エージェント", {
     x: M + 1.85, y: figY + 0.9, w: 3.23, h: 0.8, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 12.5, color: "3A3F63", lineSpacing: 21,
   });
@@ -256,42 +305,35 @@ function note(s, y, text, color) {
     x: dx + 0.32, y: figY + 0.88, w: dw - 0.64, h: 0.5, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 15, bold: true, color: WHITE, align: "center", valign: "middle",
   });
-  [["自己申告は確かめられない", "偽装できるし、誰が出した数字かも分からない"],
-   ["履歴を全部渡すことになる", "実績を示すと、取引先も個別の低評価も一緒に渡る"]].forEach(([t, d], i) => {
-    const y = figY + 1.5 + i * 0.66;
-    s.addShape(pres.ShapeType.roundRect, { x: dx + 0.32, y, w: dw - 0.64, h: 0.58, fill: { color: "222657" }, rectRadius: 0.05 });
+  ["自己申告は確かめられない", "確かめるには履歴を全部もらうしかない"].forEach((t, i) => {
+    const y = figY + 1.6 + i * 0.62;
+    s.addShape(pres.ShapeType.roundRect, { x: dx + 0.32, y, w: dw - 0.64, h: 0.52, fill: { color: "222657" }, rectRadius: 0.05 });
     s.addText("✗", {
-      x: dx + 0.5, y, w: 0.3, h: 0.58, isTextBox: true, margin: 0,
+      x: dx + 0.5, y, w: 0.3, h: 0.52, isTextBox: true, margin: 0,
       fontFace: F, fontSize: 14, bold: true, color: "FF8A75", valign: "middle",
     });
-    s.addText([
-      { text: t, options: { fontSize: 12.5, bold: true, color: WHITE, breakLine: true } },
-      { text: d, options: { fontSize: 10.5, color: LILAC2 } },
-    ], {
-      x: dx + 0.88, y, w: dw - 1.2, h: 0.58, isTextBox: true, margin: 0, valign: "middle", lineSpacing: 16,
+    s.addText(t, {
+      x: dx + 0.88, y, w: dw - 1.2, h: 0.52, isTextBox: true, margin: 0,
+      fontFace: F, fontSize: 13, bold: true, color: WHITE, valign: "middle",
     });
   });
 
   // --- 帯 ---------------------------------------------------------------
-  s.addShape(pres.ShapeType.roundRect, { x: M, y: 5.18, w: CW, h: 1.0, fill: { color: LILAC }, rectRadius: 0.08 });
-  s.addText([
-    { text: "ほしいのは、「他所で積んだ実績を、検証できる形で持ち運ぶこと」", options: { fontSize: 16, bold: true, color: INDIGO, breakLine: true } },
-    { text: "サービスごとに一から実績を積み直すのも、履歴を全部渡すのも現実的ではない。", options: { fontSize: 12, color: "3A3F63" } },
-  ], {
-    x: M + 0.4, y: 5.18, w: CW - 0.8, h: 1.0, isTextBox: true, margin: 0, valign: "middle", lineSpacing: 25,
+  s.addShape(pres.ShapeType.roundRect, { x: M, y: 5.3, w: CW, h: 0.82, fill: { color: LILAC }, rectRadius: 0.08 });
+  s.addText("ほしいのは、「他所で積んだ実績を、検証できる形で持ち運ぶこと」", {
+    x: M + 0.4, y: 5.3, w: CW - 0.8, h: 0.82, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 16, bold: true, color: INDIGO, valign: "middle",
   });
-
-  note(s, 6.38, "AI が「答える」から「任される」へ進むほど、この判断が必要になる場面が増える。", MUTED);
   pageNum(s);
-  s.addNotes("0:10-0:35 問題提起。左のロボットを指して、話しているのは人や代理店ではなくソフトウェアの AI エージェントだと最初に分からせる。旅行予約を代行するこの Agent が、予約サービスに来る。この Agent を信頼してよいか、という問いを立てる。ここで一度切って『しかし』と続け、サービス側の箱の 2 つを指す。自己申告は確かめられない、かといって履歴を全部渡されるのも困る。だから『他所で積んだ実績を検証できる形で持ち運ぶ』が要る、と言って次へ。具体的な会社名と点数はデモまで出さない。");
+  s.addNotes("0:25-0:45 問題提起。左のロボットを指して、話しているのは人や代理店ではなくソフトウェアの AI エージェントだと最初に分からせる。旅行予約を代行するこの Agent が、予約サービスに来る。この Agent を信頼してよいか、という問いを立てる。ここで一度切って『しかし』と続け、サービス側の箱の 2 つを指す。自己申告は確かめられない。かといって確かめようとすると履歴を全部もらうことになり、取引先も低評価も一緒に渡ってくる。この板挟みが出発点。だから『他所で積んだ実績を検証できる形で持ち運ぶ』が要る、と言って次へ。具体的な会社名と点数はデモまで出さない。");
 }
 
 // =======================================================================
-// 3. SWAPPABLE
+// 4. SWAPPABLE
 // =======================================================================
 {
   const s = slide();
-  head(s, "02 ─ AI 固有の難しさ", "しかも、Agent は中身を入れ替えられる");
+  head(s, "03 ─ AI 固有の難しさ", "同じ名前のまま、モデルも権限も入れ替えられる");
 
   const rows = [
     ["modelId", "gpt-demo-v1", "gpt-demo-v2"],
@@ -337,21 +379,21 @@ function note(s, y, text, color) {
 
   s.addShape(pres.ShapeType.roundRect, { x: M, y: 5.55, w: CW, h: 1.0, fill: { color: CORAL }, rectRadius: 0.08, shadow: sh() });
   s.addText([
-    { text: "名前もアカウントも同じまま、できることが変わる。実績を名前に付けると、どの構成で得たものか分からなくなる。", options: { fontSize: 14.5, bold: true, color: WHITE, breakLine: true } },
+    { text: "名前は同じまま、できることが変わる。実績を名前に付けると意味を失う。", options: { fontSize: 14.5, bold: true, color: WHITE, breakLine: true } },
     { text: "かといって、更新のたびに実績を捨てるのも現実的ではない。", options: { fontSize: 11.5, color: "FBEAE6" } },
   ], {
     x: M + 0.4, y: 5.55, w: CW - 0.8, h: 1.0, isTextBox: true, margin: 0, valign: "middle", lineSpacing: 23,
   });
   pageNum(s);
-  s.addNotes("0:35-0:55 問題②。人間にはない問題。昨日と今日で名前は同じ travel-agent-01 のまま、モデルも指示もツールも権限も入れ替わっている。実績を名前に紐付けると意味を失う。かといって更新のたびに実績を捨てるのも困る、という緊張をここで作っておくと、7 枚目の Version Policy が効く。");
+  s.addNotes("0:45-1:05 問題②。人間にはない問題。昨日と今日で名前は同じ travel-agent-01 のまま、モデルも指示もツールも権限も入れ替わっている。実績を名前に紐付けると意味を失う。かといって更新のたびに実績を捨てるのも困る、という緊張をここで作っておくと、7 枚目の Version Policy が効く。");
 }
 
 // =======================================================================
-// 4. SOLUTION
+// 5. SOLUTION
 // =======================================================================
 {
   const s = slide();
-  head(s, "03 ─ 提案", "そこで作ったのが zkAgent Passport");
+  head(s, "04 ─ 提案", "そこで作ったのが zkAgent Passport");
 
   s.addShape(pres.ShapeType.roundRect, { x: M, y: 1.9, w: CW, h: 1.1, fill: { color: INDIGO }, rectRadius: 0.08, shadow: sh() });
   s.addText("評価の詳細を渡さずに、「この領域で、宣言した構成のまま、サービスの求める条件を満たしている」ことだけを証明する仕組み", {
@@ -360,9 +402,9 @@ function note(s, y, text, color) {
   });
 
   const pillars = [
-    ["「確かめられない」への答え", "出どころを保証する", "登録された取引先だけが、Ed25519 の署名付き Receipt を発行できる。"],
-    ["「全部渡すことになる」への答え", "中身を見せずに証明する", "合計点も件数も取引先も渡さず、条件を満たすことだけを Groth16 で証明する。"],
-    ["「入れ替えられる」への答え", "構成に束縛する", "実績は名前ではなく、モデル・指示・ツール・権限のハッシュに結び付く。"],
+    ["「確かめられない」への答え", "出どころを保証する", "登録された取引先だけが署名付きの Receipt を出せる"],
+    ["「全部渡すことになる」への答え", "中身を見せずに証明する", "合計点も件数も渡さず、条件を満たすことだけを証明する"],
+    ["「入れ替えられる」への答え", "構成に束縛する", "実績は名前ではなく、構成のハッシュに結び付く"],
   ];
   const cw = 3.78, gap = (CW - cw * 3) / 2, top = 3.3, ch = 2.45;
   pillars.forEach(([tag, t, d], i) => {
@@ -388,17 +430,22 @@ function note(s, y, text, color) {
     });
   });
 
-  note(s, 6.0, "独自点は 3 つ目です。閾値証明つきのクレデンシャル自体は定石で、構成への束縛がこのプロジェクトの中心にあります。");
   pageNum(s);
-  s.addNotes("0:55-1:20 提案。ここで初めて名前を出す。定義を 1 文で読み上げてから、3 枚のカードがそれぞれ前の 2 枚で挙げた問題への答えになっていることを指差す。3 つ目が独自点だと明言しておくと、後ろの Manifest binding のスライドが素直に入る。");
+  s.addNotes("1:05-1:30 提案。ここで初めて名前を出す。定義を 1 文で読み上げてから、3 枚のカードがそれぞれ前の 2 枚で挙げた問題への答えになっていることを指差す。3 つ目が独自点だと明言しておくと、後ろの Manifest binding のスライドが素直に入る。");
 }
 
 // =======================================================================
-// 5. WHAT IS PROVEN
+// 6. WHAT IS PROVEN
 // =======================================================================
 {
   const s = slide();
-  head(s, "04 ─ 開示", "サービスが受け取るもの、受け取らないもの");
+  head(s, "05 ─ 開示", "予約サービスに渡るのは、164 バイトの証明だけ");
+
+  iconBuilding(s, M, 1.45, 0.32, INDIGO, WHITE);
+  s.addText("予約サービス = 証明を受け取って判断する側（構成図では Service）", {
+    x: M + 0.44, y: 1.43, w: CW - 0.44, h: 0.36, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 11.5, color: MUTED, valign: "middle",
+  });
 
   s.addShape(pres.ShapeType.roundRect, { x: M, y: 1.9, w: CW, h: 0.8, fill: { color: INK }, rectRadius: 0.08, shadow: sh() });
   s.addText("nullifier = Hash( agentSecret , verifierId )　←　サービスごとに別の値になる", {
@@ -409,13 +456,13 @@ function note(s, y, text, color) {
   const cw2 = (CW - 0.45) / 2, top = 2.95, ch = 2.95;
   card(s, M, top, cw2, ch, GREEN_L);
   iconProof(s, M + cw2 - 0.92, top + 0.26, 0.6, GREEN, GREEN_L);
-  s.addText("受け取るもの", {
+  s.addText("予約サービスが受け取るもの", {
     x: M + 0.35, y: top + 0.3, w: cw2 - 0.7, h: 0.42, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 17, bold: true, color: GREEN,
   });
   s.addText([
     { text: "Groth16 の証明 1 つ（164 bytes）", options: { bullet: true, breakLine: true } },
-    { text: "公開入力 20 個（Policy 9 + challenge 3 + 鍵セット + nullifier）", options: { bullet: true, breakLine: true } },
+    { text: "公開入力 20 個", options: { bullet: true, breakLine: true } },
     { text: "そのサービス専用の nullifier", options: { bullet: true } },
   ], {
     x: M + 0.35, y: top + 0.88, w: cw2 - 0.7, h: 1.9, isTextBox: true, margin: 0,
@@ -424,38 +471,37 @@ function note(s, y, text, color) {
 
   card(s, M + cw2 + 0.45, top, cw2, ch, LILAC);
   iconHidden(s, M + 2 * cw2 + 0.45 - 0.98, top + 0.3, 0.62, INDIGO, LILAC);
-  s.addText("受け取らないもの", {
+  s.addText("予約サービスが受け取らないもの", {
     x: M + cw2 + 0.8, y: top + 0.3, w: cw2 - 0.7, h: 0.42, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 17, bold: true, color: INDIGO,
   });
   s.addText([
     { text: "個別の評価・取引先の名前・合計点", options: { bullet: true, breakLine: true } },
     { text: "Receipt の件数", options: { bullet: true, breakLine: true } },
-    { text: "証明書そのもの（ID・署名・期限・発行時の Manifest）", options: { bullet: true, breakLine: true } },
+    { text: "証明書そのもの", options: { bullet: true, breakLine: true } },
     { text: "passportCommitment・agentSecret", options: { bullet: true } },
   ], {
     x: M + cw2 + 0.8, y: top + 0.88, w: cw2 - 0.7, h: 1.9, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 13.5, color: "3A3F63", lineSpacing: 22, paraSpaceAfter: 10,
   });
 
-  note(s, 6.15, "サービスは、取引先の名前も個別の評価も合計点も受け取らない。別のサービスが受け取る nullifier とも無関係。");
   pageNum(s);
-  s.addNotes("1:20-1:40 開示。左右の対比を読み上げる。証明書そのものが渡らないことと、Agent 固有の値が nullifier だけであることの 2 点を強調する。デモの右パネルがちょうどこの対比になっている、と繋げる。");
+  s.addNotes("1:30-1:50 開示。まず見出しの下の 1 行で「サービス」が何を指すかを言う（1 枚目の予約サービスと同じもので、次の構成図では Service（検証者））。そのうえで左右の対比を読み上げる。証明書そのものが渡らないことと、Agent 固有の値が nullifier だけであることの 2 点を強調する。デモの右パネルがちょうどこの対比になっている、と繋げる。");
 }
 
 // =======================================================================
-// 6. ARCHITECTURE
+// 7. ARCHITECTURE
 // =======================================================================
 {
   const s = slide();
-  head(s, "05 ─ 構成", "5 ステップ、外部サービスなしでローカル完結");
+  head(s, "06 ─ 構成", "仕事の評価が、証明になるまでの 5 ステップ");
 
   const steps = [
-    ["1", "Task Provider", "署名付き Receipt を発行（このデモでは 3 社）"],
-    ["2", "Input Gateway", "6 つの検査を通し、Committee へ分割"],
-    ["3", "Reputation Committee", "3 ノード固定。部分和を出し 2-of-3 の EdDSA で署名"],
-    ["4", "Agent", "agentSecret と Manifest を持ち、Groth16 の証明を作る"],
-    ["5", "Service（検証者）", "Policy と nonce を出し、5 つの検査で受理する"],
+    ["1", "Task Provider\n（取引先）", "評価を出した取引先。デモでは A・B・C の 3 社"],
+    ["2", "Input Gateway", "6 つの検査を通し、3 ノードへ分割"],
+    ["3", "Reputation Committee", "部分和から証明書を作り、2-of-3 で署名"],
+    ["4", "Agent", "秘密と Manifest を持ち、証明を作る"],
+    ["5", "Service（検証者）", "予約サービス。Policy と nonce を出す"],
   ];
   const bw = 2.0, gap = (CW - bw * 5) / 4, top = 1.95, bh = 2.45;
   steps.forEach(([n, t, d], i) => {
@@ -486,32 +532,32 @@ function note(s, y, text, color) {
     }
   });
 
-  s.addText("Task Provider の 3 はこのデモの社数（何社でもよい）。Committee の 3 は回路が決めた固定値。", {
+  s.addText("取引先の 3 社はデモの都合。Committee の 3 ノードは回路の固定値。", {
     x: M, y: 4.46, w: CW, h: 0.3, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 10.5, color: MUTED,
   });
 
   s.addShape(pres.ShapeType.roundRect, { x: M, y: 4.86, w: CW, h: 0.78, fill: { color: GREEN_L }, rectRadius: 0.08 });
-  s.addText("証明書は Agent で止まる。4 → 5 の矢印が運ぶのは、Groth16 の証明とその公開入力 20 個だけ。", {
+  s.addText("証明書は Agent で止まる。4 → 5 が運ぶのは、証明と公開入力 20 個だけ。", {
     x: M + 0.35, y: 4.86, w: CW - 0.7, h: 0.78, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 15, bold: true, color: GREEN, valign: "middle",
   });
 
   s.addShape(pres.ShapeType.roundRect, { x: M, y: 5.8, w: CW, h: 0.8, fill: { color: LILAC }, rectRadius: 0.08 });
-  s.addText("Go 1.25　·　gnark / Groth16（BN254）　·　回路内のハッシュは Poseidon2　·　Committee 署名は BabyJubJub 上の EdDSA を回路内で検証　·　評価の集計は 3 者の加算的秘密分散", {
+  s.addText("Go 1.25（外部サービス不要）　·　Groth16 / BN254（gnark）　·　Poseidon2　·　Committee 署名は回路内で検証　·　集計は加算的秘密分散", {
     x: M + 0.35, y: 5.8, w: CW - 0.7, h: 0.8, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 11.5, color: "3A3F63", valign: "middle",
   });
   pageNum(s);
-  s.addNotes("1:40-2:15 構成。「3」が 2 回出るので、凡例の 1 行を指して区別を言う（Provider の 3 はデモの社数、Committee の 3 は回路の固定値）。Provider が署名付き Receipt を出し、Gateway が検査して評価を 3 分割、Committee が部分和から証明書を作る。Agent はそれを自分の中に持ったまま証明だけをサービスに出す。MPC の出力を ZK で開く、というのが Week 6 のスタック設計そのもの。");
+  s.addNotes("1:50-2:25 構成。左から順に「誰が何をするか」を追う。1 の Task Provider は取引先、つまり仕事を依頼して評価を出した会社で、デモでは Provider A・B・C の 3 社。5 の Service は 1 枚目から出ている予約サービスそのもの。ここで次のデモに出る名前を全部そろえておく。「3」が 2 回出るので、凡例の 1 行を指して区別を言う（Provider の 3 はデモの社数、Committee の 3 は回路の固定値）。Provider が署名付き Receipt を出し、Gateway が検査して評価を 3 分割、Committee が部分和から証明書を作る。Agent はそれを自分の中に持ったまま証明だけをサービスに出す。MPC の出力を ZK で開く、というのが Week 6 のスタック設計そのもの。");
 }
 
 // =======================================================================
-// 7. MANIFEST BINDING
+// 8. MANIFEST BINDING
 // =======================================================================
 {
   const s = slide();
-  head(s, "06 ─ 独自点", "実績は名前ではなく、この箱の中身に付く");
+  head(s, "07 ─ 独自点", "実績は名前ではなく、この 4 項目に付く");
 
   // ---- the Agent box -------------------------------------------------
   const bx = 6.2, by = 1.95, bh = 3.5;
@@ -564,7 +610,7 @@ function note(s, y, text, color) {
     x: rx + 0.3, y: by + 0.24, w: rw - 0.6, h: 0.38, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 15, bold: true, color: INDIGO,
   });
-  s.addText("変更してよい項目のビットマスクと、（項目, 値）の許可リストの Merkle root。どちらもサービスの policyHash に束縛される。", {
+  s.addText("変更してよい項目のビットマスクと、許可リストの Merkle root。どちらも policyHash に束縛される。", {
     x: rx + 0.3, y: by + 0.68, w: rw - 0.6, h: 0.8, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 12, color: "3A3F63", lineSpacing: 19,
   });
@@ -587,32 +633,32 @@ function note(s, y, text, color) {
     fontFace: FM, fontSize: 14, bold: true, color: GREEN, valign: "middle", align: "center",
   });
   pageNum(s);
-  s.addNotes("2:15-2:40 独自点。ここが主役。3 枚目で見せた箱と同じ図に戻ってくる。左の箱を指しながら「実績が付くのは名前ではなくこの 4 項目です」と言う。モデルを v2 にしても Policy が許していれば証明は通る、permissionScope の拡大は許可外なので Agent 側で証明を作れない、と 2 つを対にして説明する。");
+  s.addNotes("2:25-2:45 独自点。ここが主役。3 枚目で見せた箱と同じ図に戻ってくる。左の箱を指しながら「実績が付くのは名前ではなくこの 4 項目です」と言う。モデルを v2 にしても Policy が許していれば証明は通る、permissionScope の拡大は許可外なので Agent 側で証明を作れない、と 2 つを対にして説明する。");
 }
 
 // =======================================================================
-// 8. DEMO
+// 9. DEMO
 // =======================================================================
 {
   const s = slide();
-  head(s, "07 ─ デモ", "A・B・C 社が評価した Agent を、D 社が検証する");
+  head(s, "08 ─ デモ", "実際に動かして、6 つの問いに答える");
 
   s.addShape(pres.ShapeType.roundRect, { x: M, y: 1.82, w: CW, h: 1.0, fill: { color: INDIGO }, rectRadius: 0.08, shadow: sh() });
   robot(s, M + 0.36, 1.96, 0.42, { head: WHITE, part: LILAC2, eye: GREEN, mouth: INDIGO });
   s.addText([
-    { text: "A 社 5 点・B 社 4 点・C 社 5 点 の評価がある travel-agent-01 を、D 社が検証する", options: { fontSize: 14, bold: true, color: WHITE, breakLine: true } },
-    { text: "D 社の Policy は「この領域で 12 点以上・3 件以上・指定した構成のまま」。合計の 14 点は D 社に渡らない。", options: { fontSize: 11.5, color: LILAC2 } },
+    { text: "travel-agent-01 の実績 — 取引先 3 社（Provider A・B・C）から 5 点・4 点・5 点、合計 14 点", options: { fontSize: 13.5, bold: true, color: WHITE, breakLine: true } },
+    { text: "予約サービスの条件 — この領域で 12 点以上・3 件以上・宣言した構成のまま。合計点も取引先も渡さずに示せるか。", options: { fontSize: 11.5, color: LILAC2 } },
   ], {
     x: M + 1.2, y: 1.82, w: CW - 1.6, h: 1.0, isTextBox: true, margin: 0, valign: "middle", lineSpacing: 24,
   });
 
   const items = [
-    ["1", "中身を見せずに合格する", "合計点も取引先も渡さずに条件を満たせるか　→　できる", GREEN],
-    ["2", "自作自演の高評価を防ぐ", "同じ取引先の重ね付けで水増しできるか　→　Gateway が弾く", CORAL],
-    ["3", "モデルを更新しても実績は残る", "載せ替えた Agent は前の実績を使えるか　→　使える", GREEN],
-    ["4", "権限をこっそり広げると失格", "宣言した範囲を勝手に広げたら通るか　→　Agent 側で止まる", CORAL],
-    ["5", "証明のコピーは使えない", "一度通った証明をもう一度使えるか　→　使えない（nonce）", CORAL],
-    ["6", "2 つのサービスが突き合わせても追えない", "記録を持ち寄れば同じ Agent と分かるか　→　分からない", GREEN],
+    ["1", "中身を見せずに合格する", "できる（合計点も取引先も渡さない）", GREEN],
+    ["2", "自作自演の高評価を防ぐ", "できない（Gateway が弾く）", CORAL],
+    ["3", "モデルを更新しても実績は残る", "使える（Policy が許した範囲なら）", GREEN],
+    ["4", "権限をこっそり広げると失格", "通らない（Agent 側で止まる）", CORAL],
+    ["5", "証明のコピーは使えない", "使えない（nonce）", CORAL],
+    ["6", "2 つのサービスが突き合わせても追えない", "分からない（nullifier が別値）", GREEN],
   ];
   const cw2 = (CW - 0.4) / 2, rh = 1.0, top = 3.02;
   items.forEach(([n, t, d, c], i) => {
@@ -631,15 +677,20 @@ function note(s, y, text, color) {
   });
 
   pageNum(s);
-  s.addNotes("2:40-3:45 デモ。まず場面を読み上げる。A・B・C 社が 5・4・5 の評価を出した travel-agent-01 を、D 社が検証する。ここで冒頭の問いに具体的な数字が入る。あとは画面のボタンを ① から ⑥ まで上から押すだけ。各ボタンが条件の設定・実行・答えの表示までやる。③④が Manifest binding の表と裏、⑥ が unlinkability、②⑤ が『暗号で解けるもの／解けないもの』の線引き。見える / 見えないの対比は「Service から何が見えるか」タブを開いて話す（そこに 14・5/4/5・取引先名と、唯一残る限界も出る）。押していたら ② と ⑤ を飛ばす。ブラウザ 1 枚・外部 CDN なしは口頭で。");
+  s.addNotes("2:45-3:45 デモ。まず帯の 2 行を読む。上が Agent 側の実績（取引先 3 社から 5・4・5、合計 14 点）、下が予約サービス側の条件（12 点以上・3 件以上・宣言した構成のまま）。この 2 つを突き合わせるのがデモで、名前も数字も画面の表示と一致する。あとは画面のボタンを ① から ⑥ まで上から押すだけ。各ボタンが条件の設定・実行・答えの表示までやる。③④が Manifest binding の表と裏、⑥ が unlinkability、②⑤ が『暗号で解けるもの／解けないもの』の線引き。見える / 見えないの対比は「Service から何が見えるか」タブを開いて話す（そこに 14・5/4/5・取引先名と、唯一残る限界も出る）。押していたら ② と ⑤ を飛ばす。ブラウザ 1 枚・外部 CDN なしは口頭で。");
 }
 
 // =======================================================================
-// 9. NUMBERS
+// 10. NUMBERS
 // =======================================================================
 {
   const s = slide();
-  head(s, "08 ─ 数字", "Apple Silicon Mac での実測（go run ./cmd/bench -n 20）");
+  head(s, "09 ─ 数字", "プライバシーの値段は 55 ミリ秒");
+
+  s.addText("Apple Silicon Mac での実測　—　go run ./cmd/bench -n 20", {
+    x: M, y: 1.45, w: CW, h: 0.3, isTextBox: true, margin: 0,
+    fontFace: F, fontSize: 11.5, color: MUTED,
+  });
 
   const stats = [
     ["28,596", "制約数（Groth16 / BN254）"],
@@ -682,40 +733,40 @@ function note(s, y, text, color) {
 
   const tx = M + chartW + 0.45, tw = CW - chartW - 0.45;
   card(s, tx, 3.4, tw, 3.0, LILAC);
-  s.addText("プライバシーの値段", {
+  s.addText("何に、いくら払ったか", {
     x: tx + 0.32, y: 3.68, w: tw - 0.64, h: 0.4, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 17, bold: true, color: INDIGO,
   });
   s.addText([
-    { text: "3,829 制約 / 17 ms — 公開された証明書に対する閾値証明", options: { bullet: true, breakLine: true } },
+    { text: "3,829 / 17 ms — 公開証明書への閾値証明", options: { bullet: true, breakLine: true } },
     { text: "12,570 / 34 ms — Manifest Version Policy を足す", options: { bullet: true, breakLine: true } },
-    { text: "28,596 / 55 ms — 証明書ごと隠す（Committee 署名を回路内で検証）", options: { bullet: true } },
+    { text: "28,596 / 55 ms — 証明書ごと隠す", options: { bullet: true } },
   ], {
     x: tx + 0.32, y: 4.2, w: tw - 0.64, h: 1.5, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 12.5, color: "3A3F63", lineSpacing: 19, paraSpaceAfter: 9,
   });
-  s.addText("内訳は Committee 署名 2 本が 54%、Version Policy が 24%。MPC は足し算なのでコストはほぼゼロ。", {
+  s.addText("内訳は署名 2 本が 54%、Version Policy が 24%。", {
     x: tx + 0.32, y: 5.75, w: tw - 0.64, h: 0.5, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 11.5, italic: true, color: MUTED, lineSpacing: 17,
   });
   pageNum(s);
-  s.addNotes("3:45-4:15 数字。制約が 2 段階で増えた推移を『プライバシーの値段』として語る。55 ms なら市場の効率を損なうレベルではない、と添える。");
+  s.addNotes("3:45-4:10 数字。制約が 2 段階で増えた推移を『プライバシーの値段』として語る。55 ms なら市場の効率を損なうレベルではない、と添える。");
 }
 
 // =======================================================================
-// 10. LIMITS
+// 11. LIMITS
 // =======================================================================
 {
   const s = slide();
-  head(s, "09 ─ 限界", "弱点ではなく、設計判断として言う");
+  head(s, "10 ─ 限界", "暗号が守るのはプライバシーで、信頼ではない");
 
   const items = [
-    ["暗号が守るのはプライバシーであって、信頼ではない",
-     "登録済み Provider が正しい評価を出すことは前提。偽レビュー・Sybil・Issuer との共謀は Gateway の検査でコストを上げるだけで、なくせはしない。"],
+    ["信頼は Issuer Registry に依存する",
+     "偽レビュー・Sybil・共謀は防げない。Gateway の検査はコストを上げるだけ。"],
     ["MPC は現構成では限定的",
-     "秘密分散が評価を隠すのは Committee のノードからであって、Gateway からではない。3 ノードは 1 プロセス内の忠実なシミュレーション。"],
+     "隠せるのは Committee のノードからで、Gateway からではない。3 ノードは 1 プロセス内。"],
     ["残る経路は 1 つ — 現在の manifestCommitment は公開",
-     "Policy が構成を指定する以上、構成のハッシュは出る。同じ製品の Agent 群は同じ値を共有するので、今あるのは「同じ構成のグループ内での匿名性」。"],
+     "Policy が構成を指定する以上、ハッシュは出る。今あるのは「同じ構成のグループ内での匿名性」。"],
   ];
   const top = 1.9, rh = 1.15;
   items.forEach(([t, d], i) => {
@@ -733,16 +784,16 @@ function note(s, y, text, color) {
   });
 
   s.addShape(pres.ShapeType.roundRect, { x: M, y: 6.02, w: CW, h: 0.78, fill: { color: GREEN_L }, rectRadius: 0.08 });
-  s.addText("次は Policy を「許可された Manifest 集合への包含」に変えて最後の経路を閉じる。その先は、Provider が Gateway を経由せず Committee へ直接秘密分散する構成。", {
+  s.addText("次は Policy を「許可された Manifest 集合への包含」に変えて閉じる。その先は Gateway の不要化。", {
     x: M + 0.35, y: 6.02, w: CW - 0.7, h: 0.78, isTextBox: true, margin: 0,
     fontFace: F, fontSize: 13, bold: true, color: GREEN, valign: "middle",
   });
   pageNum(s);
-  s.addNotes("4:15-4:35 限界。自分から先に言う。ここを誠実に出すと、質疑が Shamir・直接秘密分散・許可 Manifest 集合という先の話に進む。");
+  s.addNotes("4:10-4:30 限界。弱点としてではなく設計判断として言う。自分から先に出す。ここを誠実に出すと、質疑が Shamir・直接秘密分散・許可 Manifest 集合という先の話に進む。");
 }
 
 // =======================================================================
-// 11. CLOSING
+// 12. CLOSING
 // =======================================================================
 {
   const s = slide({ dark: true });
@@ -780,11 +831,11 @@ function note(s, y, text, color) {
     fontFace: F, fontSize: 12, color: MUTED, align: "center",
   });
   pageNum(s);
-  s.addNotes("4:35-4:50 締め。3 行を読み上げてからキャッチに戻る。リポジトリはそのまま leave-behind になる。");
+  s.addNotes("4:30-4:45 締め。3 行を読み上げてからキャッチに戻る。リポジトリはそのまま leave-behind になる。");
 }
 
 // =======================================================================
-// 12. BACKUP DIVIDER
+// 13. BACKUP DIVIDER
 // =======================================================================
 {
   const s = slide({ dark: true });
@@ -805,14 +856,14 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 13. BACKUP - ARCHITECTURE DETAIL
+// 14. BACKUP - ARCHITECTURE DETAIL
 // =======================================================================
 {
   const s = slide();
   head(s, "BACKUP", "構成の詳細 — ステークホルダーと技術スタック");
 
   const steps = [
-    ["1", "Task Provider", "仕事の結果に評価を付けた Receipt を発行する。デモでは A・B・C 社の 3 社。", "Ed25519 署名"],
+    ["1", "Task Provider\n（取引先）", "仕事を依頼して評価を出した会社。結果に Receipt を発行する。デモでは Provider A・B・C。", "Ed25519 署名"],
     ["2", "Input Gateway", "署名・登録・重複・同一発行者・期限・範囲の 6 つを検査し、評価を分割する。", "3 者の加算的秘密分散"],
     ["3", "Reputation Committee", "3 ノードが部分和を出し、2-of-3 で証明書に署名。ノード数は回路の固定値。", "BabyJubJub 上の EdDSA"],
     ["4", "Agent", "agentSecret と Manifest を持ち、証明書を外に出さずに証明だけを作る。", "Groth16 / BN254（gnark）"],
@@ -876,7 +927,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 14. COMPARISON TABLE
+// 15. COMPARISON TABLE
 // =======================================================================
 {
   const s = slide();
@@ -914,7 +965,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 15. WHY ZK
+// 16. WHY ZK
 // =======================================================================
 {
   const s = slide();
@@ -955,7 +1006,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 16. BACKUP - CONSTRAINT BREAKDOWN
+// 17. BACKUP - CONSTRAINT BREAKDOWN
 // =======================================================================
 {
   const s = slide();
@@ -1008,7 +1059,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 17. BACKUP - TRUST ASSUMPTIONS
+// 18. BACKUP - TRUST ASSUMPTIONS
 // =======================================================================
 {
   const s = slide();
@@ -1041,7 +1092,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 18. BACKUP - MENTOR FEEDBACK
+// 19. BACKUP - MENTOR FEEDBACK
 // =======================================================================
 {
   const s = slide();
@@ -1079,7 +1130,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 19. BACKUP - Q&A
+// 20. BACKUP - Q&A
 // =======================================================================
 {
   const s = slide();
@@ -1111,7 +1162,7 @@ function note(s, y, text, color) {
 }
 
 // =======================================================================
-// 20. PROBLEM (無効化: 場面スライドに統合)
+// 21. PROBLEM (無効化: 場面スライドに統合)
 // =======================================================================
 /*  2026-09-12 に「01 ─ 場面」へ統合した。分けて話したくなったらこのコメントを外し、
     new_order に "PROBLEM (無効化: 場面スライドに統合)" を戻す。
@@ -1153,5 +1204,5 @@ function note(s, y, text, color) {
 }
 */
 
-pres.writeFile({ fileName: process.argv[2] || "zk-agent-passport-5min.pptx" })
+pres.writeFile({ fileName: process.argv[2] || "zk-agent-passport.pptx" })
   .then((f) => console.log("wrote", f));
