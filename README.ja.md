@@ -57,7 +57,7 @@ Go 1.25 以降が必要です。初回は回路をコンパイルし、開発専
 go run ./cmd/web
 ```
 
-http://127.0.0.1:8080 を開きます。押すたびに本物のプロトコルが走り、6 つのステップが順に描画されます。Receipt の発行、Gateway の検査と秘密分散、Committee の部分和と証明書、Policy と nonce、証明の生成、そして検証です。
+http://127.0.0.1:8080 を開きます。待ち受けアドレスは `-addr` か環境変数 `PORT` で変えられます。押すたびに本物のプロトコルが走り、6 つのステップが順に描画されます。Receipt の発行、Gateway の検査と秘密分散、Committee の部分和と証明書、Policy と nonce、証明の生成、そして検証です。
 
 冒頭にあるのは、扱っている場面そのもの（旅行予約を代行する AI エージェントに高い権限を渡してよいか）と、6 つのボタンです。ボタンは機能名ではなく問いになっています。
 
@@ -140,9 +140,12 @@ cmd/agent/      単発の Agent プロセス（init、enroll、update-manifest�
 cmd/service/    検証者プロセス（challenge、verify）。nonce の状態を永続化
 cmd/bench/      制約の内訳と時間の計測
 docs/design-notes.ja.md  回路、Manifest binding、再送の防止、信頼の前提
-docs/slides/    5 分の発表スライドと生成スクリプト
 ```
 
 ## 信頼の前提
 
 これは MVP です。Issuer Registry・Input Gateway・Committee は固定された信頼できる参加者として扱い、Committee の 3 ノードは 1 プロセス内で動き、Groth16 のセットアップは単一者による開発専用のものです。偽レビュー・Review Farming・Sybil は、ここで暗号が解決する範囲の外にあります。前提と対象外の全リストは [design notes](docs/design-notes.ja.md#信頼の前提と対象外) にあります。
+
+## ライセンス
+
+Apache License 2.0 です。[LICENSE](LICENSE) を参照してください。

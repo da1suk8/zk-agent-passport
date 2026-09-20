@@ -79,7 +79,8 @@ use those keys as a production trusted setup.
 go run ./cmd/web
 ```
 
-Open http://127.0.0.1:8080. Every click runs the real protocol and animates six
+Open http://127.0.0.1:8080. The address comes from `-addr` or the `PORT`
+environment variable. Every click runs the real protocol and animates six
 steps: receipts, gateway checks and secret sharing, committee partial sums and
 certificate, policy and nonce, proof generation, verification.
 
@@ -198,7 +199,6 @@ cmd/agent/      Single-shot agent process (init, enroll, update-manifest, prove)
 cmd/service/    Verifier process (challenge, verify) with persisted nonce state
 cmd/bench/      Constraint breakdown and timing
 docs/design-notes.md  Circuit, manifest binding, replay protection, trust assumptions
-docs/slides/    The five-minute presentation deck and the script that builds it
 ```
 
 ## Trust assumptions
@@ -209,3 +209,7 @@ Groth16 setup is single-party and for development only. Fake reviews, review
 farming and Sybil identities sit outside what cryptography settles here. The
 full list of assumptions and non-goals is in the
 [design notes](docs/design-notes.md#trust-assumptions-and-non-goals).
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
