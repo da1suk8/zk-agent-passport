@@ -73,3 +73,21 @@
 - プロトコルの型は同時利用を想定していません。`cmd/service` は状態ファイルをアトミックにではなく、その場で上書きします。ブラウザデモはパッケージ側を並行化するのではなく、mutex でリクエストを直列化しています。
 
 回路に入る識別子は有限体の符号化を使うため、デモでは `taskDomain`・`aggregationEpoch`・鍵セットのバージョンに数値の識別子を使います。人が読む名前はアプリケーションの境界に留めています。
+
+## 仕様との対応
+
+本プロジェクトは [zk-tokyo/advanced-cryptography-2026#124](https://github.com/zk-tokyo/advanced-cryptography-2026/issues/124) の提案を実装したものです。Scope の項目はすべて実装しています。Passport と Manifest のコミットメント、6 つの Gateway 検査を伴う署名付き Receipt、3 者間の加算 MPC と 2-of-3 の証明書、Policy に束縛された証明、状態を持つ再送防止です。提案は自身のプライバシー上の限界と、それを解消する拡張も挙げていました。MVP はその拡張まで実装したので、提案の Limitation の節はもうコードを説明していません。
+
+| 提案 | コード |
+|---|---|
+| 検証者が証明書の署名と期限を自分で検査し、そこから `passportCommitment` と `agentManifestCommitment` を読むため、2 つのサービスへの訪問は紐づく | 証明書は Agent から出ない。署名・定足数・期限は回路内で検証し、検証者が得るのは passportCommitment ではなくサービスごとの nullifier |
+| `receiptCount` は公開値で、検証者が Policy と比較する | `receiptCount` は秘密入力で、回路内で比較する |
+| 証明は公開の `certificateHash` に束縛される | 公開の証明書ハッシュは無い。証明書は秘密入力で、回路がハッシュを計算し直して署名を検証する |
+| 証明書署名の ZK 検証、サービスごとの nullifier、Receipt 数の秘匿は将来課題 | 実装済み |
+| Manifest Version Policy は将来課題 | 実装済み。Policy に変更可能項目のマスクと許可リストの root が加わり、項目は 6 つから 8 つになった |
+| Web UI は Stretch Goal | `cmd/web` |
+| Agent Alpha は CLI プロセスか簡単なスクリプト | `cmd/agent` と `cmd/service` を別々の単発プロセスとして、`cmd/demo` をスクリプトとして実装 |
+
+対象外は提案のままです。失効機構、閾値署名、FHE、実 LLM との連携、複数 Domain、Testnet は無く、セットアップは単一者によるものです。
+
+その Issue でのレビューで求められたのは 3 点でした。ステークホルダーと技術スタックを示した構成図、常駐プロセスではなく単発の関数として動く場合に何を Agent の存在単位とするか、そしてプライバシーのためのスタックが加えるコストの定量評価です。それぞれ、[README の構成図](../README.ja.md#仕組み)、`cmd/agent`（存在単位は agentSecret の保持者と宣言した Manifest の組であって、同じ秘密と Manifest を読み込むサーバーレスの実行は同じ Agent）、そして `cmd/bench` と[上の制約の内訳](#制約の内訳)が答えです。

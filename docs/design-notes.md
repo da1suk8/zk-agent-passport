@@ -137,3 +137,37 @@ trusted.
 Circuit-bound identifiers use finite-field encodings, so the demo uses numeric
 identifiers for `taskDomain`, `aggregationEpoch` and keyset versions;
 human-readable names stay at the application boundary.
+
+## Relation to the specification
+
+The project implements the proposal in
+[zk-tokyo/advanced-cryptography-2026#124](https://github.com/zk-tokyo/advanced-cryptography-2026/issues/124).
+Every item in its Scope is built: the passport and manifest commitments, signed
+receipts with the six gateway checks, additive three-party aggregation with a
+2-of-3 certificate, the policy-bound proof, and stateful replay protection. The
+proposal also named its own privacy limits and listed the extensions that would
+lift them, and the MVP went on to build those, so the proposal's limitation
+section no longer describes the code.
+
+| The proposal | The code |
+|---|---|
+| The verifier checks the certificate's signatures and expiry itself and reads `passportCommitment` and `agentManifestCommitment` from it, so visits to two services are linkable | The certificate never leaves the agent. Signatures, quorum and expiry are verified in-circuit, and the verifier learns a per-service nullifier instead of the passport commitment |
+| `receiptCount` is public and the verifier compares it with the policy | `receiptCount` is a private witness, compared in-circuit |
+| The proof is bound to a public `certificateHash` | There is no public certificate hash. The certificate is a private witness whose hash the circuit recomputes and checks the signatures against |
+| Certificate signatures verified in ZK, per-service nullifiers, hidden receipt counts: future work | Built |
+| Manifest Version Policy: future work | Built. The policy gains a mutable-field mask and an allowlist root, so it has eight fields rather than six |
+| Web UI: a stretch goal | `cmd/web` |
+| Agent Alpha as a CLI process or a script | `cmd/agent` and `cmd/service` as separate single-shot processes, and `cmd/demo` as the script |
+
+The non-goals stand: no revocation, no threshold signatures, no FHE, no real
+LLM agent, one domain, no testnet, and a single-party setup.
+
+The review on that issue asked for three things: a diagram naming the
+stakeholders and the stack, a position on what an agent *is* when it runs as a
+single-shot function rather than a resident process, and a quantitative account
+of the cost the privacy stack adds. They are answered by the
+[README's architecture diagram](../README.md#how-it-works), by `cmd/agent`
+(the unit of identity is the holder of `agentSecret` plus the declared
+manifest, so a serverless execution that loads the same secret and manifest is
+the same agent), and by `cmd/bench` with the
+[constraint breakdown above](#where-the-constraints-go).
